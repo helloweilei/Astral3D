@@ -180,8 +180,142 @@ const guideNote = defineNoteConfig({
     ]
 })
 
+const sdkNote = defineNoteConfig({
+    dir: 'sdk',
+    link: '/notes/sdk/',
+    sidebar: [
+        { text: '总览', link: '/notes/sdk/' },
+        {
+            text: '核心入口',
+            collapsed: false,
+            icon: 'carbon:api',
+            items: [
+                'core/Viewer',
+                'core/App',
+                'core/Preview',
+                'core/Loader',
+                'core/Package',
+            ]
+        },
+        {
+            text: '应用模块',
+            collapsed: false,
+            prefix: 'modules/app',
+            icon: 'carbon:application',
+            items: [
+                'Config',
+                'Project',
+                'History',
+                'Resource',
+                'Selector',
+                'Storage',
+                'CSM',
+            ]
+        },
+        {
+            text: '视口模块',
+            collapsed: false,
+            prefix: 'modules/viewer',
+            icon: 'carbon:view',
+            items: [
+                'Helper',
+                'CameraManage',
+                'Effect',
+                'Weather',
+                'Signals',
+                'ParticleSystem',
+                'Drag',
+            ]
+        },
+        {
+            text: '对象与资源',
+            collapsed: false,
+            prefix: 'objects',
+            icon: 'carbon:cube',
+            items: [
+                { text: '概览', link: '/notes/sdk/objects/' },
+                '基础对象',
+                '广告牌',
+                'HTML面板',
+                '粒子对象',
+            ]
+        },
+        {
+            text: '材质与几何',
+            collapsed: false,
+            prefix: 'materials',
+            icon: 'carbon:3d-cursor',
+            items: [
+                { text: '概览', link: '/notes/sdk/materials/' },
+                'TeapotGeometry',
+                'Shader材质',
+            ]
+        },
+        {
+            text: '工具类',
+            collapsed: false,
+            prefix: 'tools',
+            icon: 'carbon:tools',
+            items: [
+                { text: '概览', link: '/notes/sdk/tools/' },
+                'Roaming',
+                'MiniMap',
+                'ClippedEdgesBox',
+                'Measure',
+                'Export',
+                'ModelExplode',
+            ]
+        },
+        {
+            text: '命令系统',
+            collapsed: false,
+            prefix: 'commands',
+            icon: 'carbon:terminal',
+            items: [
+                { text: '概览', link: '/notes/sdk/commands/' },
+                '对象命令',
+                '脚本命令',
+                '属性命令',
+                '变换命令',
+                '几何命令',
+                '材质命令',
+                '场景命令',
+            ]
+        },
+        {
+            text: '时间轴与粒子',
+            collapsed: false,
+            icon: 'carbon:flow',
+            items: [
+                { text: 'Timeline', link: '/notes/sdk/timeline/' },
+                { text: 'Particle', link: '/notes/sdk/particle/' },
+            ]
+        },
+        {
+            text: '通用能力',
+            collapsed: false,
+            icon: 'carbon:settings',
+            items: [
+                { text: '常量', link: '/notes/sdk/constants/' },
+                { text: 'Utils 与 Hooks', link: '/notes/sdk/utils/' },
+            ]
+        },
+        {
+            text: '扩展集成',
+            collapsed: false,
+            icon: 'carbon:plug',
+            items: [
+                { text: '脚本', link: '/notes/sdk/script/' },
+                { text: 'DXF', link: '/notes/sdk/dxf/' },
+                { text: '点云', link: '/notes/sdk/point-cloud/' },
+                { text: '插件', link: '/notes/sdk/plugin/' },
+            ]
+        },
+    ]
+})
+
 export const notes = defineNotesConfig({
     dir: 'notes',
     link: '/',
-    notes: [updateNote, planNote, guideNote],
+    notes: [updateNote, planNote, guideNote, sdkNote],
 })

@@ -7,7 +7,7 @@ export const navbar = defineNavbarConfig([
         icon: 'icon-park-outline:guide-board',
         link: '/notes/guide/quick-start/介绍.md',
     },
-    { text: 'SDK', link: '/notes/sdk/README.md', icon: 'carbon:api' },
+    { text: 'SDK', link: '/notes/sdk/', icon: 'carbon:api' },
     { text: '示例', link: 'https://examples.astraljs.com/', icon: 'carbon:carbon-for-ibm-dotcom' },
     { text: '推广中心', link: '/notes/promotion/README.md', icon: 'mdi:star-shooting-outline' },
     { text: '商务合作', link: '/notes/cooperation/README.md', icon: 'carbon:partnership' },
