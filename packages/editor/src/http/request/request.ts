@@ -3,7 +3,6 @@ import type { Ref } from "vue";
 import type { AxiosInstance, AxiosRequestConfig } from "axios";
 import { useBoolean, useLoading } from "@/hooks/index";
 import CustomAxiosInstance from "./instance";
-import { Service } from "../../../types/network";
 
 type RequestMethod = "get" | "post" | "put" | "delete";
 
