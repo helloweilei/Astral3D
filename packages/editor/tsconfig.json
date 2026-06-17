@@ -3,6 +3,7 @@
     "useDefineForClassFields": true,
     "target": "esnext",
     "module": "esnext",
+    "ignoreDeprecations": "6.0",
     "moduleResolution": "node",
     "strict": true,
     "forceConsistentCasingInFileNames": true,
@@ -32,7 +33,8 @@
     },
     "emitDeclarationOnly": true, // 只输出声明文件(ts 产物)
     "declaration": true, // 自动生成声明文件
-    "declarationDir": "types", // 声明文件生成的目录
+    "rootDir": ".",
+    "declarationDir": "types" // 声明文件生成的目录/ 声明文件生成的目录
   },
   "include": [
     "src/**/*.ts",
