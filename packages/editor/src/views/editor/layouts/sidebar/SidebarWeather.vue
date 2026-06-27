@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import {CaretForwardOutline} from "@vicons/ionicons5";
-import {t} from "@/language";
+import { CaretForwardOutline } from "@vicons/ionicons5";
+import { t } from "@/language";
 import Fog from "./weather/Sidebar.Weather.Fog.vue";
 import Rain from "./weather/Sidebar.Weather.Rain.vue";
 import Snow from "./weather/Sidebar.Weather.Snow.vue";
+import Lightning from "./weather/Sidebar.Weather.Lightning.vue";
 
 </script>
 
 <template>
-    <n-collapse display-directive="show" :default-expanded-names="['fog', 'rain','snow']">
+    <n-collapse display-directive="show" :default-expanded-names="['fog', 'rain', 'snow', 'lightning']">
         <template #arrow>
             <n-icon>
                 <CaretForwardOutline />
@@ -29,9 +30,12 @@ import Snow from "./weather/Sidebar.Weather.Snow.vue";
         <n-collapse-item :title="t('layout.sider.weather.Snow')" name="snow">
             <Snow />
         </n-collapse-item>
+
+        <!--  lightning  -->
+        <n-collapse-item :title="t('layout.sider.weather.Lightning')" name="lightning">
+            <Lightning />
+        </n-collapse-item>
     </n-collapse>
 </template>
 
-<style lang="less">
-
-</style>
+<style lang="less"></style>

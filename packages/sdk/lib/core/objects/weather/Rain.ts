@@ -1,71 +1,71 @@
 /**
  * @author ErSan
  * @email  mlt131220@163.com
- * @date   2025/01/07 
+ * @date   2025/01/07
  * @description 贴相机的下雨效果
  */
-import * as THREE from 'three';
-import type CameraControls from 'camera-controls';
+import * as THREE from "three";
+import type CameraControls from "camera-controls";
 
 interface IRainOption {
-    speed: number,
-    color: string,
-    size: number,
-    radian: number,
-    alpha: number,
+	speed: number;
+	color: string;
+	size: number;
+	radian: number;
+	alpha: number;
 }
 
-export default class Rain{
-    options: IRainOption;
-    mesh:THREE.Mesh;
-    controls: CameraControls;
+export default class Rain {
+	options: IRainOption;
+	mesh: THREE.Mesh;
+	controls: CameraControls;
 
-    constructor(option: IRainOption, controls: CameraControls) {
-        const defaultOption: IRainOption = {
-            speed: 0.4,
-            color: "#ffffff",
-            size: 0.5,
-            radian: 95 * THREE.MathUtils.DEG2RAD,
-            alpha: 0.4
-        };
+	constructor(option: IRainOption, controls: CameraControls) {
+		const defaultOption: IRainOption = {
+			speed: 0.4,
+			color: "#ffffff",
+			size: 0.5,
+			radian: 95 * THREE.MathUtils.DEG2RAD,
+			alpha: 0.4,
+		};
 
-        this.options = Object.assign({}, defaultOption, option);
+		this.options = Object.assign({}, defaultOption, option);
 
-        this.controls = controls;
-        
-        this.mesh = this.createMesh();
+		this.controls = controls;
 
-        this.updatePosition();
-    }
+		this.mesh = this.createMesh();
 
-    createMesh(){
-        const geometry = new THREE.PlaneGeometry(200, 200);
+		this.updatePosition();
+	}
 
-        const uniforms = {
-            u_time: {
-                type: "f",
-                value: 0.0
-            },
-            tDiffuse: { value: null },
-            u_resolution: {
-                type: "v2",
-                value: new THREE.Vector2(window.innerWidth, window.innerHeight).multiplyScalar(window.devicePixelRatio)
-            },
-            alpha: {
-                type: "f",
-                value: this.options.alpha,
-            },
-            size: { value: this.options.size },
-            radian: { value: this.options.radian * THREE.MathUtils.DEG2RAD },
-            speed: { value: this.options.speed },
-            color: { value: new THREE.Color(this.options.color) }
-        };
+	createMesh() {
+		const geometry = new THREE.PlaneGeometry(200, 200);
 
-        const material = new THREE.ShaderMaterial({
-            transparent: true,
-            uniforms: uniforms,
-            side: 2,
-            vertexShader: `
+		const uniforms = {
+			u_time: {
+				type: "f",
+				value: 0.0,
+			},
+			tDiffuse: { value: null },
+			u_resolution: {
+				type: "v2",
+				value: new THREE.Vector2(window.innerWidth, window.innerHeight).multiplyScalar(window.devicePixelRatio),
+			},
+			alpha: {
+				type: "f",
+				value: this.options.alpha,
+			},
+			size: { value: this.options.size },
+			radian: { value: this.options.radian * THREE.MathUtils.DEG2RAD },
+			speed: { value: this.options.speed },
+			color: { value: new THREE.Color(this.options.color) },
+		};
+
+		const material = new THREE.ShaderMaterial({
+			transparent: true,
+			uniforms: uniforms,
+			side: 2,
+			vertexShader: `
                 #define GLSLIFY 1
                 varying vec2 vUv;
                 void main() {
@@ -73,7 +73,7 @@ export default class Rain{
                     gl_Position = vec4( position, 1.0 );
                 }
             `,
-            fragmentShader: `
+			fragmentShader: `
                 uniform sampler2D tDiffuse;
                 uniform vec2 u_resolution;
                 uniform float u_time;
@@ -108,57 +108,58 @@ export default class Rain{
                     col += clamp(f,0.0,1.0)*color;
                     gl_FragColor = vec4(col, alpha);
                 }
-        `
-        });
+        `,
+		});
 
-        return new THREE.Mesh(geometry, material);
-    }
+		return new THREE.Mesh(geometry, material);
+	}
 
-    updatePosition() {
-        if (this.controls && this.mesh) {
-            const position = this.controls.getPosition(new THREE.Vector3());
-            const center = this.controls.getTarget(new THREE.Vector3());
-            this.mesh.position.copy(center);
-            if (position.y < 100) {
-                this.mesh.position.y = -100;
-            } else {
-                this.mesh.position.y = 0;
-            }
-        }
-    }
+	updatePosition() {
+		if (this.controls && this.mesh) {
+			const position = this.controls.getPosition(new THREE.Vector3());
+			const center = this.controls.getTarget(new THREE.Vector3());
+			this.mesh.position.copy(center);
+			console.log(position);
+			if (position.y < 100) {
+				this.mesh.position.y = -100;
+			} else {
+				this.mesh.position.y = 0;
+			}
+		}
+	}
 
-    updateOptions(option) {
-        const material = <THREE.ShaderMaterial>this.mesh.material;
-        for (const key in option) {
-            this.options[key] = option[key];
+	updateOptions(option) {
+		const material = <THREE.ShaderMaterial>this.mesh.material;
+		for (const key in option) {
+			this.options[key] = option[key];
 
-            if (material.uniforms[key]) {
-                let value = option[key];
+			if (material.uniforms[key]) {
+				let value = option[key];
 
-                switch(key){
-                    case "radian":
-                        value *= THREE.MathUtils.DEG2RAD;
-                        break;
-                    case "color":
-                        value = new THREE.Color(value);
-                        break;
-                }
-                material.uniforms[key].value = value;
-            }
-        }
-    }
+				switch (key) {
+					case "radian":
+						value *= THREE.MathUtils.DEG2RAD;
+						break;
+					case "color":
+						value = new THREE.Color(value);
+						break;
+				}
+				material.uniforms[key].value = value;
+			}
+		}
+	}
 
-    update(deltaTime){
-        this.updatePosition();
+	update(deltaTime) {
+		this.updatePosition();
 
-        if (this.mesh.material && this.mesh.material instanceof THREE.ShaderMaterial) {
-            this.mesh.material.uniforms.u_time.value += deltaTime;
-        }
-    }
+		if (this.mesh.material && this.mesh.material instanceof THREE.ShaderMaterial) {
+			this.mesh.material.uniforms.u_time.value += deltaTime;
+		}
+	}
 
-    dispose(){
-        this.mesh.geometry.dispose();
-        (<THREE.Material>this.mesh.material).dispose();
-        this.mesh.removeFromParent();        
-    }
+	dispose() {
+		this.mesh.geometry.dispose();
+		(<THREE.Material>this.mesh.material).dispose();
+		this.mesh.removeFromParent();
+	}
 }

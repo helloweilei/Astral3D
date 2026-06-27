@@ -745,6 +745,12 @@ export class Package {
 							});
 							useDispatchSignal("sceneSnowSettingsChanged");
 						}
+						if (configJson.weather.lightning) {
+							Object.keys(configJson.weather.lightning).forEach(key => {
+								projectWeather.lightning[key] = configJson.weather.lightning[key];
+							});
+							useDispatchSignal("sceneLightningSettingsChanged");
+						}
 					}
 				}
 
