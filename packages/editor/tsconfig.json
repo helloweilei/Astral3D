@@ -3,7 +3,6 @@
     "useDefineForClassFields": true,
     "target": "esnext",
     "module": "esnext",
-    "ignoreDeprecations": "6.0",
     "moduleResolution": "node",
     "strict": true,
     "forceConsistentCasingInFileNames": true,

@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import {watch,reactive, h, computed, ref, useTemplateRef} from 'vue';
-import type {VNodeChild} from 'vue';
-import {NIcon} from 'naive-ui';
-import type {FormInst, UploadInst,UploadFileInfo } from 'naive-ui';
-import {t} from "@/language";
-import {ASSET_UPLOAD_SUPPORT_TYPE} from "@/utils/common/constant";
-import {ArchiveOutline} from "@vicons/ionicons5";
-import {filterSize, getServiceStaticFile} from "@/utils/common/file";
+import { watch, reactive, h, computed, ref, useTemplateRef } from 'vue';
+import type { VNodeChild } from 'vue';
+import { NIcon } from 'naive-ui';
+import type { FormInst, UploadInst, UploadFileInfo } from 'naive-ui';
+import { t } from "@/language";
+import { ASSET_UPLOAD_SUPPORT_TYPE } from "@/utils/common/constant";
+import { ArchiveOutline } from "@vicons/ionicons5";
+import { filterSize, getServiceStaticFile } from "@/utils/common/file";
 import { formItemNotNil } from "@/utils/common/verify";
-import {fetchUpload} from "@/http/api/sys";
-import {fetchAddAsset, fetchGetAssetCategoryTags, fetchUpdateAsset} from "@/http/api/assetsInfo";
-import {useAssetsStore} from "@/store/modules/assets";
+import { fetchUpload } from "@/http/api/sys";
+import { fetchAddAsset, fetchGetAssetCategoryTags, fetchUpdateAsset } from "@/http/api/assetsInfo";
+import { useAssetsStore } from "@/store/modules/assets";
 import CommonPreview from "@/components/preview/CommonPreview.vue";
 
 const props = withDefaults(defineProps<{
@@ -19,7 +19,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   visible: false,
 })
-const emits = defineEmits(['update:visible','refresh']);
+const emits = defineEmits(['update:visible', 'refresh']);
 
 const assetsStore = useAssetsStore();
 
@@ -65,21 +65,24 @@ const rules = {
     trigger: ['input', 'blur']
   }
 };
-const tagOptions = ref([]);
+const tagOptions = ref<{
+  label: string,
+  value: string
+}[]>([]);
 const fileSize = computed(() => filterSize(model.size));
 const renderTypeLabel = (option: IAssets.MainCategory): VNodeChild => {
   return [
     h(
-        NIcon,
-        {
-          style: {
-            verticalAlign: '-0.15em',
-            marginRight: '4px'
-          }
-        },
-        {
-          default: () => h(option.icon)
+      NIcon,
+      {
+        style: {
+          verticalAlign: '-0.15em',
+          marginRight: '4px'
         }
+      },
+      {
+        default: () => h(option.icon)
+      }
     ),
     option.label as string
   ]
@@ -96,7 +99,7 @@ const subCategories = computed(() => {
 });
 
 // 资源类型变更
-function handleTypeChange(){
+function handleTypeChange() {
   model.category = "";
   model.tags = [];
 
@@ -128,35 +131,35 @@ function handleUpdateTag() {
 // 通过预览截图
 const previewVisible = ref(false);
 const previewName = ref(t("home.Preview"));
-function handlePreview(){
-  if(!model.file) return;
+function handlePreview() {
+  if (!model.file) return;
 
   previewName.value = model.name;
   previewVisible.value = true;
 }
-function handlePreviewScreenshot(image:HTMLImageElement){
+function handlePreviewScreenshot(image: HTMLImageElement) {
   const url = image.getAttribute("src");
-  if(!url) return;
+  if (!url) return;
 
   fetch(url)
-      .then(res=> res.blob())
-      .then(blob => {
-        const fileName = `${Date.now() + model.name}_thumbnail.png`;
+    .then(res => res.blob())
+    .then(blob => {
+      const fileName = `${Date.now() + model.name}_thumbnail.png`;
 
-        thumbnailFileList.value = [
-          {
-            id:  fileName,
-            name: fileName,
-            file: new File([blob], fileName, { type: blob.type }),
-            url: null,
-            status: 'pending'
-          }
-        ]
+      thumbnailFileList.value = [
+        {
+          id: fileName,
+          name: fileName,
+          file: new File([blob], fileName, { type: blob.type }),
+          url: null,
+          status: 'pending'
+        }
+      ]
 
-        handleThumbnailChange();
+      handleThumbnailChange();
 
-        previewVisible.value = false;
-      })
+      previewVisible.value = false;
+    })
 }
 
 // 预览图变化
@@ -171,7 +174,7 @@ function handleThumbnailChange() {
 }
 
 // 上传文件变化
-function handleFileChange({file}) {
+function handleFileChange({ file }) {
   if (file.status === "removed") {
     model.file = null;
     model.size = 0;
@@ -191,12 +194,12 @@ function handleFileChange({file}) {
   model.name = fileName.join(".");
   model.size = model.file.size;
 
-  if(model.type === "Texture") {
+  if (model.type === "Texture") {
     const fileName = `${Date.now() + model.name}_thumbnail.png`;
 
     thumbnailFileList.value = [
       {
-        id:  fileName,
+        id: fileName,
         name: fileName,
         file: model.file,
         url: null,
@@ -223,7 +226,7 @@ function submit(e) {
     const saveFolder = `upload/assets/${model.type.toLowerCase()}`;
 
     // 1. 上传缩略图
-    let thumbnailPath = "",filePath = "";
+    let thumbnailPath = "", filePath = "";
     if (model.thumbnail && model.thumbnail instanceof File) {
       const res = await fetchUpload({
         file: model.thumbnail,
@@ -270,13 +273,13 @@ function submit(e) {
 
       submitLoading.value = false;
       handleShow(false);
-    }else{
+    } else {
       submitLoading.value = false;
     }
   })
 }
 
-function update(e){
+function update(e) {
   e.preventDefault();
 
   formRef.value?.validate(async (errors) => {
@@ -287,7 +290,7 @@ function update(e){
     const saveFolder = `upload/assets/${model.type.toLowerCase()}`;
 
     // 1. 检查缩略图是否变化，变化则上传新的
-    if(model.thumbnail !== props.asset.thumbnail) {
+    if (model.thumbnail !== props.asset.thumbnail) {
       const res = await fetchUpload({
         file: model.thumbnail as File,
         biz: `${saveFolder}/thumbnail`
@@ -321,7 +324,7 @@ function update(e){
 
       submitLoading.value = false;
       handleShow(false);
-    }else{
+    } else {
       submitLoading.value = false;
     }
   })
@@ -341,9 +344,9 @@ function handleShow(visible: boolean) {
   }
 }
 
-watch(() => props.visible,() => {
-  if(props.visible){
-    if(props.asset){
+watch(() => props.visible, () => {
+  if (props.visible) {
+    if (props.asset) {
       isUpdate.value = true;
 
       model.name = props.asset.name;
@@ -371,60 +374,62 @@ watch(() => props.visible,() => {
       model.tags = props.asset.tags ? props.asset.tags.split(',') : [];
     }
 
-    fetchGetAssetCategoryTags(model.type,model.category).then(res => {
-      tagOptions.value = res.data.map((tag) => ({
+    fetchGetAssetCategoryTags(model.type, model.category).then(res => {
+      tagOptions.value = res.data?.map?.((tag) => ({
         label: tag,
         value: tag,
-      }));
+      })) || [];
     })
-  }else{
+  } else {
     isUpdate.value = false;
   }
 })
 </script>
 
 <template>
-  <n-modal :show="visible" @update:show="handleShow" :mask-closable="false" ref="modelRef"
-           class="!w-500px" preset="card" :title="t(isUpdate ? 'home.assets.Edit asset' : 'home.assets.Upload asset')">
-    <n-form label-placement="left" :model="model" :rules="rules"
-            label-width="100px" label-align="right" ref="formRef"
-            require-mark-placement="right-hanging" :disabled="submitLoading">
+  <n-modal :show="visible" @update:show="handleShow" :mask-closable="false" ref="modelRef" class="!w-500px"
+    preset="card" :title="t(isUpdate ? 'home.assets.Edit asset' : 'home.assets.Upload asset')">
+    <n-form label-placement="left" :model="model" :rules="rules" label-width="100px" label-align="right" ref="formRef"
+      require-mark-placement="right-hanging" :disabled="submitLoading">
       <n-form-item :label="t('home.assets.Type')">
-        <n-select v-model:value="model.type" :options="assetsStore.categories" :render-label="renderTypeLabel" value-field="key"
-                  children-field="" :disabled="isUpdate" @update:value="handleTypeChange"/>
+        <n-select v-model:value="model.type" :options="assetsStore.categories" :render-label="renderTypeLabel"
+          value-field="key" children-field="" :disabled="isUpdate" @update:value="handleTypeChange" />
       </n-form-item>
 
       <n-form-item :label="t('home.assets.Category')" path="category">
-        <n-tree-select v-model:value="model.category" :options="subCategories" value-field="key"/>
+        <n-tree-select v-model:value="model.category" :options="subCategories" value-field="key" />
       </n-form-item>
 
       <n-form-item :label="t('home.assets.Tags')">
         <n-select v-model:value="model.tags" :options="tagOptions" filterable multiple tag
-                  @update:value="handleUpdateTag"/>
+          @update:value="handleUpdateTag" />
       </n-form-item>
 
       <n-form-item :label="t('bim.Thumbnail')" path="thumbnail">
         <div class="flex flex-col w-full">
           <n-upload :default-upload="false" list-type="image-card" :max="1" accept="image/*"
-                    v-model:file-list="thumbnailFileList" @update:file-list="handleThumbnailChange"/>
-          <n-button v-if="!['Texture'].includes(model.type)" type="primary" class="w-full mt-2" :disabled="!model.file" @click="handlePreview">
+            v-model:file-list="thumbnailFileList" @update:file-list="handleThumbnailChange" />
+          <n-button v-if="!['Texture'].includes(model.type)" type="primary" class="w-full mt-2" :disabled="!model.file"
+            @click="handlePreview">
             {{ t('home.assets.By previewing the screenshots') }}
           </n-button>
         </div>
       </n-form-item>
 
       <n-form-item :label="t('layout.header.File')" path="file">
-        <n-upload ref="uploadFileRef" :default-upload="false" :max="1"  :disabled="isUpdate" :default-file-list="fileList"
-                  :accept="'.' + ASSET_UPLOAD_SUPPORT_TYPE[model.type].join(',.')" @change="handleFileChange">
+        <n-upload ref="uploadFileRef" :default-upload="false" :max="1" :disabled="isUpdate"
+          :default-file-list="fileList" :accept="'.' + ASSET_UPLOAD_SUPPORT_TYPE[model.type].join(',.')"
+          @change="handleFileChange">
           <n-upload-dragger>
             <div>
               <n-icon size="48" :depth="3">
-                <ArchiveOutline/>
+                <ArchiveOutline />
               </n-icon>
             </div>
             <n-text style="font-size: 14px">
               {{
-                t("bim['Click or drag the file to this area.Supported formats are:']") + ` ${ASSET_UPLOAD_SUPPORT_TYPE[model.type].join("、")}`
+                t("bim['Click or drag the file to this area.Supported formats are:']") + `
+              ${ASSET_UPLOAD_SUPPORT_TYPE[model.type].join("、")}`
               }}
             </n-text>
           </n-upload-dragger>
@@ -432,25 +437,24 @@ watch(() => props.visible,() => {
       </n-form-item>
 
       <n-form-item :label="t('home.assets.Name')" path="name">
-        <n-input v-model:value="model.name"/>
+        <n-input v-model:value="model.name" />
       </n-form-item>
 
       <n-form-item :label="t('home.assets.Size')">
-        <n-input v-model:value="fileSize" disabled/>
+        <n-input v-model:value="fileSize" disabled />
       </n-form-item>
     </n-form>
 
     <div class="flex justify-end space-x-2 mt-2">
       <n-button round :disabled="submitLoading" @click="handleShow(false)">{{ t("other.Cancel") }}</n-button>
-      <n-button round :loading="submitLoading" type="primary" @click="submit" v-if="!isUpdate">{{ t("other.Upload") }}</n-button>
+      <n-button round :loading="submitLoading" type="primary" @click="submit" v-if="!isUpdate">{{ t("other.Upload")
+        }}</n-button>
       <n-button round :loading="submitLoading" type="primary" @click="update" v-else>{{ t("other.Ok") }}</n-button>
     </div>
   </n-modal>
 
   <CommonPreview v-model:visible="previewVisible" :name="previewName" :file-or-url="model.file" :type="model.type"
-                 screenshot-show @screenshot="handlePreviewScreenshot" />
+    screenshot-show @screenshot="handlePreviewScreenshot" />
 </template>
 
-<style scoped lang="less">
-
-</style>
+<style scoped lang="less"></style>

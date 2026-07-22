@@ -1,44 +1,44 @@
 <script lang="ts" setup>
-import {ref, watch} from "vue";
-import {t} from "@/language";
-import {defaultProjectInfo} from "@astral3d/engine";
-import {SCENE_TYPE} from "@/utils/common/constant";
+import { ref, watch } from "vue";
+import { t } from "@/language";
+import { defaultProjectInfo } from "@astral3d/engine";
+import { SCENE_TYPE } from "@/utils/common/constant";
 
 const props = withDefaults(defineProps<{
-  value:ISceneFetchData | null
-}>(),{
-  value:null
+  value: ISceneFetchData | null
+}>(), {
+  value: null
 })
 
 const DefaultSceneData = defaultProjectInfo().sceneInfo;
 
 const formRef = ref();
-const form = ref<ISceneFetchData>({...DefaultSceneData,hasDrawing: DefaultSceneData.hasDrawing ? 1 : 0});
+const form = ref<ISceneFetchData>({ ...DefaultSceneData, hasDrawing: DefaultSceneData.hasDrawing ? 1 : 0 });
 const rules = {
-  sceneName: {required: true, message: t("layout.sider.project.please enter the scene name"), trigger: ['input', 'blur']}
+  sceneName: { required: true, message: t("layout.sider.project.please enter the scene name"), trigger: ['input', 'blur'] }
 }
 
-watch(() => props.value,(newVal) => {
-  if(newVal === null){
+watch(() => props.value, (newVal) => {
+  if (newVal === null) {
     Object.keys(DefaultSceneData).forEach(key => {
       form.value[key] = DefaultSceneData[key];
     })
-  }else{
+  } else {
     Object.keys(newVal).forEach(key => {
       // createTime & updateTime no replace
-      if(["createTime","updateTime"].includes(key)) return;
+      if (["createTime", "updateTime"].includes(key)) return;
 
       form.value[key] = newVal[key];
     })
   }
 })
 
-function getData():ISceneFetchData{
-  return {...form.value};
+function getData(): ISceneFetchData {
+  return { ...form.value };
 }
 
-function validate(){
-  return new Promise((resolve,reject) => {
+function validate() {
+  return new Promise((resolve, reject) => {
     formRef.value?.validate((errors) => {
       if (!errors) {
         resolve('')
@@ -52,17 +52,16 @@ function validate(){
 }
 
 defineExpose({
-  getData,validate
+  getData, validate
 })
 </script>
 
 <template>
-  <n-form ref="formRef" :model="form" :rules="rules" size="small" class="max-w-100%"
-      label-placement="left" label-width="100">
+  <n-form ref="formRef" :model="form" :rules="rules" size="small" class="max-w-100%" label-placement="left"
+    label-width="100">
     <!-- 场景名称 -->
     <n-form-item :label="t('scene.Name')" path="sceneName">
-      <n-input v-model:value="form.sceneName"
-               :placeholder="t('layout.sider.project.please enter the scene name')" />
+      <n-input v-model:value="form.sceneName" :placeholder="t('layout.sider.project.please enter the scene name')" />
     </n-form-item>
 
     <!-- 场景分类 -->
@@ -73,7 +72,7 @@ defineExpose({
     <!-- 场景描述 -->
     <n-form-item :label="t('scene.Introduction')">
       <n-input v-model:value="form.sceneIntroduction" type="textarea"
-               :placeholder="t('layout.sider.project[\'please enter the scene introduction\']')" />
+        :placeholder="t('layout.sider.project[\'please enter the scene introduction\']')" />
     </n-form-item>
 
     <!-- 场景版本 -->
@@ -83,5 +82,4 @@ defineExpose({
   </n-form>
 </template>
 
-<style scoped lang="less">
-</style>
+<style scoped lang="less"></style>
