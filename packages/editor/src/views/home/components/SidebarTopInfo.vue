@@ -14,7 +14,7 @@ withDefaults(defineProps<{
 
     <transition enter-active-class="animate__animated animate__fadeInRight" leave-active-class="animate__animated animate__fadeOutRight">
       <n-gradient-text :size="24" type="success" class="ml-5px" v-if="!collapsed">
-        Astral 3D Editor
+        Scene Editor
       </n-gradient-text>
     </transition>
   </div>

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import {onMounted, ref, reactive, watch} from "vue";
-import {Search} from "@vicons/carbon";
-import {Utils} from "@astral3d/engine";
-import {getServiceStaticFile} from "@/utils/common/file";
+import { onMounted, ref, reactive, watch } from "vue";
+import { Search } from "@vicons/carbon";
+import { Utils } from "@astral3d/engine";
+import { getServiceStaticFile } from "@/utils/common/file";
 import CardAction from "./components/CardAction.vue";
-import {t} from "@/language";
-import {fetchGetAssetCategoryTags, fetchGetAssetsList} from "@/http/api/assetsInfo";
+import { t } from "@/language";
+import { fetchGetAssetCategoryTags, fetchGetAssetsList } from "@/http/api/assetsInfo";
 import UploadAsset from "@/views/home/assetsCenter/UploadAsset.vue";
 import AssetDetail from "@/views/home/assetsCenter/components/AssetDetail.vue";
 import AssetPreview from "@/components/preview/AssetPreview.vue";
@@ -19,8 +19,8 @@ const props = withDefaults(defineProps<{
 });
 
 // 搜索和筛选状态
-const tags = ref([]);
-const filterTags = ref([]);
+const tags = ref<string[]>([]);
+const filterTags = ref<string[]>([]);
 const searchQuery = ref("");
 // 资源数据
 const assetsData = ref<Array<IAssets.Item>>([]);
@@ -111,8 +111,8 @@ onMounted(() => {
   handleLoad();
 
   // 获取标签
-  fetchGetAssetCategoryTags(props.type,props.category).then(res => {
-    tags.value = res.data;
+  fetchGetAssetCategoryTags(props.type, props.category).then(res => {
+    tags.value = res.data || [];
   })
 })
 watch([() => props.type, () => props.category], () => {
@@ -121,13 +121,13 @@ watch([() => props.type, () => props.category], () => {
   reload();
 
   // 获取标签
-  fetchGetAssetCategoryTags(props.type,props.category).then(res => {
-    tags.value = res.data;
+  fetchGetAssetCategoryTags(props.type, props.category).then(res => {
+    tags.value = res.data || [];
   })
 })
-watch(searchQuery,Utils.debounce(() => {
+watch(searchQuery, Utils.debounce(() => {
   reload();
-},500))
+}, 500))
 
 defineExpose({
   refresh
@@ -144,9 +144,9 @@ defineExpose({
     </n-checkbox-group>
 
     <n-input v-model:value="searchQuery" :placeholder="t('home.assets.Search for assets') + '...'" clearable
-             class="max-w-500px">
+      class="max-w-500px">
       <template #prefix>
-        <n-icon :component="Search"/>
+        <n-icon :component="Search" />
       </template>
     </n-input>
   </div>
@@ -157,19 +157,20 @@ defineExpose({
       <template #cover>
         <div class="absolute top-10px right-10px z-10">
           <n-tag type="success" :bordered="false" class="ml-5px"
-                 v-for="tag in (asset.tags ? asset.tags.split(',') : [])" :key="tag">
+            v-for="tag in (asset.tags ? asset.tags.split(',') : [])" :key="tag">
             {{ tag }}
           </n-tag>
         </div>
 
         <n-image preview-disabled object-fit="cover"
-                 :src="getServiceStaticFile(asset.thumbnail) || '/static/images/carousel/Astral3DEditor.jpg'"
-                 class="w-full h-220px cursor-pointer hover:transform-scale-140 transition-all-200"
-                 @click="handlePreview(asset)"/>
+          :src="getServiceStaticFile(asset.thumbnail) || '/static/images/carousel/Astral3DEditor.jpg'"
+          class="w-full h-220px cursor-pointer hover:transform-scale-140 transition-all-200"
+          @click="handlePreview(asset)" />
       </template>
 
       <template #action>
-        <CardAction :asset="asset" @refresh="refresh" @preview="handlePreview" @detail="handleDetail" @edit="handleEdit"/>
+        <CardAction :asset="asset" @refresh="refresh" @preview="handlePreview" @detail="handleDetail"
+          @edit="handleEdit" />
       </template>
     </n-card>
 
@@ -188,10 +189,10 @@ defineExpose({
   <AssetPreview v-model:visible="previewVisible" :asset="operationAsset as IAssets.Item" />
 
   <!-- 详情 -->
-  <AssetDetail v-model:visible="detailVisible" :detail="operationAsset"/>
+  <AssetDetail v-model:visible="detailVisible" :detail="operationAsset" />
 
   <!-- 编辑 -->
-  <UploadAsset v-model:visible="editVisible" :asset="operationAsset" @refresh="refresh"/>
+  <UploadAsset v-model:visible="editVisible" :asset="operationAsset" @refresh="refresh" />
 </template>
 
 <style lang="less">
@@ -210,7 +211,7 @@ defineExpose({
     }
   }
 
-  .n-scrollbar-rail{
+  .n-scrollbar-rail {
     right: -10px;
   }
 }
