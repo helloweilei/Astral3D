@@ -104,6 +104,9 @@ export default {
 			Dark: "深色",
 			"Main color": "主色调",
 		},
+		viewport: {
+			projection: "投影",
+		},
 		scene: {
 			toolbar: {
 				"Six views": "六视图",
@@ -114,6 +117,8 @@ export default {
 				Front: "前视图",
 				Back: "后视图",
 				"Scene camera": "场景相机",
+				Show: "显示",
+				Hide: "隐藏",
 				Realistic: "真实",
 				Solid: "原色",
 				Normals: "法向",
@@ -574,6 +579,8 @@ export default {
 		editor: {
 			"Default Camera": "默认相机",
 			"Default Scene": "默认场景",
+			"Custom Camera": "自定义相机",
+			"Camera Settings": "相机设置",
 		},
 	},
 	other: {

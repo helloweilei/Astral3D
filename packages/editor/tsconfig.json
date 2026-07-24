@@ -3,13 +3,11 @@
     "useDefineForClassFields": true,
     "target": "esnext",
     "module": "esnext",
-    "moduleResolution": "node",
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true,
     "strictFunctionTypes": false,
     "jsx": "preserve",
-    "baseUrl": ".",
     "allowJs": true,
     "sourceMap": false,
     "esModuleInterop": true,
@@ -24,10 +22,10 @@
     "skipLibCheck": true,
     "paths": {
       "~/*": [
-        "types/*"
+        "./types/*"
       ],
       "@/*": [
-        "src/*"
+        "./src/*"
       ]
     },
     "emitDeclarationOnly": true, // 只输出声明文件(ts 产物)

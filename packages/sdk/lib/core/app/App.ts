@@ -17,7 +17,7 @@ import Viewer from "@/core/viewer/Viewer.ts";
 
 const _DEFAULT_CAMERA = new THREE.PerspectiveCamera(45, 1, 0.01, 100 * 1000);
 _DEFAULT_CAMERA.name = "默认相机";
-_DEFAULT_CAMERA.position.set(0, 5, 10);
+_DEFAULT_CAMERA.position.set(10, 5, 10);
 _DEFAULT_CAMERA.lookAt(new THREE.Vector3());
 
 export class App {

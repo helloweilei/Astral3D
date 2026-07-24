@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import {h, ref, onMounted, nextTick, onBeforeUnmount} from "vue";
-import {TreeOption, TreeDropInfo, NIcon, NBadge, NEllipsis} from "naive-ui";
+import { h, ref, onMounted, nextTick, onBeforeUnmount } from "vue";
+import { TreeOption, TreeDropInfo, NIcon, NBadge, NEllipsis, NButton } from "naive-ui";
 import {
   Camera,
   Schematics,
@@ -15,12 +15,15 @@ import {
   Network1,
   Image,
   LocationHeart,
-  LocationCompany
+  LocationCompany,
+  View,
+  ViewOff,
+  TrashCan
 } from '@vicons/carbon';
-import {t} from "@/language";
-import {App,Hooks, MoveObjectCommand, RemoveObjectCommand, AddObjectCommand} from "@astral3d/engine";
-import {escapeHTML, findSiblingsAndIndex} from "@/utils/common/utils";
-import {getMaterialName} from "@/utils/common/scenes";
+import { t } from "@/language";
+import { App, Hooks, MoveObjectCommand, RemoveObjectCommand, AddObjectCommand, SetValueCommand } from "@astral3d/engine";
+import { escapeHTML, findSiblingsAndIndex } from "@/utils/common/utils";
+import { getMaterialName } from "@/utils/common/scenes";
 import EsContextmenu from "@/components/es/EsContextmenu.vue";
 
 const sceneTreeRef = ref();
@@ -43,6 +46,108 @@ const sceneTreeData = ref<TreeOption[]>([
 ]);
 const sceneTreeSelected = ref<Array<string | number>>([]);
 const sceneTreeExpandedKeys = ref<number[]>([]);
+const editEnabled = ref(false);
+
+function canShowNodeActions(object3D) {
+  return editEnabled.value && object3D && object3D !== App.camera && object3D !== App.scene;
+}
+
+function toggleVisible(object3D) {
+  App.execute(new SetValueCommand(object3D, "visible", !object3D.visible));
+  refreshUI();
+}
+
+function confirmDelete(object3D) {
+  window.$dialog.warning({
+    title: t("other.Tips"),
+    content: t("prompt['Are you sure you want to delete it?']"),
+    positiveText: t("other.Ok"),
+    negativeText: t("other.Cancel"),
+    onPositiveClick: () => {
+      if (object3D.parent !== null) {
+        App.execute(new RemoveObjectCommand(object3D));
+      }
+    },
+  });
+}
+
+function getMeshInfoSuffix(geometry, material) {
+  return h("div", { class: "scene-tree-node-meta ml-4 text-12px flex items-center" }, [
+    h(NBadge, { dot: true, type: "success" }, {}),
+    h(NEllipsis, { class: "!max-w-100px" }, {
+      default: () => h("span", { class: "ml-1 mr-2" }, { default: () => escapeHTML(geometry.name) }),
+    }),
+    h(NBadge, { dot: true, type: "warning" }, {}),
+    h(NEllipsis, { class: "!max-w-100px" }, {
+      default: () => h("span", { class: "ml-1 mr-2" }, { default: () => escapeHTML(getMaterialName(material)) }),
+    }),
+  ]);
+}
+
+function getNodeActionIcons(object3D, disabled = false) {
+  if (!canShowNodeActions(object3D)) return null;
+
+  return h("div", { class: "scene-tree-node-actions flex items-center gap-0" }, [
+    h(
+      NButton,
+      {
+        quaternary: true,
+        circle: true,
+        size: "tiny",
+        disabled,
+        title: object3D.visible ? t("layout.sider.scene.Hide") : t("layout.sider.scene.Show"),
+        onClick: (event: Event) => {
+          event.stopPropagation();
+          toggleVisible(object3D);
+        },
+      },
+      {
+        icon: () =>
+          h(NIcon, { size: 14 }, {
+            default: () => h(object3D.visible ? View : ViewOff),
+          }),
+      }
+    ),
+    h(
+      NButton,
+      {
+        quaternary: true,
+        circle: true,
+        size: "tiny",
+        disabled,
+        title: t("home.Delete"),
+        onClick: (event: Event) => {
+          event.stopPropagation();
+          confirmDelete(object3D);
+        },
+      },
+      {
+        icon: () =>
+          h(NIcon, { size: 14 }, {
+            default: () => h(TrashCan),
+          }),
+      }
+    ),
+  ]);
+}
+
+function getNodeSuffix(object3D, disabled = false) {
+  const children: any[] = [];
+
+  if (object3D.isMesh) {
+    children.push(getMeshInfoSuffix(object3D.geometry, object3D.material));
+  }
+
+  const actionIcons = getNodeActionIcons(object3D, disabled);
+  if (actionIcons) {
+    children.push(actionIcons);
+  }
+
+  if (children.length === 0) return undefined;
+
+  return () =>
+    h("div", { class: "scene-tree-node-suffix flex items-center ml-auto" }, children);
+}
 
 function objectSelected(object) {
   if (object !== null && object.parent !== null) {
@@ -60,7 +165,7 @@ function objectSelected(object) {
     getParentId(object)
 
     //在虚拟滚动模式下滚动到某个节点
-    sceneTreeRef.value?.scrollTo({key: object.id})
+    sceneTreeRef.value?.scrollTo({ key: object.id })
   } else {
     sceneTreeSelected.value = [];
   }
@@ -113,32 +218,7 @@ function refreshUI() {
       data.children = addObjects(object3D, disabled);
     }
 
-    if (object3D.isMesh) {
-      const geometry = object3D.geometry;
-      const material = object3D.material;
-
-      data.suffix = () => {
-        return h('div', {class: "ml-4 text-12px"}, [
-          h(
-              NBadge,
-              {dot: true, type: 'success'},
-              {},
-          ),
-          h(NEllipsis, {class: "!max-w-100px"}, {
-            default: () => h("span", {class: 'ml-1 mr-2'}, {default: () => escapeHTML(geometry.name)})
-          }),
-          h(
-              NBadge,
-              {dot: true, type: 'warning'},
-              {},
-          ),
-          h(NEllipsis, {class: "!max-w-100px"}, {
-            default: () => h("span", {class: 'ml-1 mr-2'}, {default: () => escapeHTML(getMaterialName(material))})
-          }),
-
-        ])
-      }
-    }
+    data.suffix = getNodeSuffix(object3D, disabled);
 
     return data;
   }
@@ -177,9 +257,9 @@ function refreshUI() {
 function getPrefixIcon(type: string) {
   const getIconRender = (icon: any) => {
     return h(
-        NIcon,
-        {size: 16},
-        {default: () => h(icon)}
+      NIcon,
+      { size: 16 },
+      { default: () => h(icon) }
     )
   }
 
@@ -250,12 +330,12 @@ function moveObject(object, newParent, nextObject) {
  * @param dragNode 被拖动的节点
  * @param dropPosition 拖动到的相对于目标节点的位置
  */
-function handleSceneTreeDrop({node, dragNode, dropPosition}: TreeDropInfo) {
+function handleSceneTreeDrop({ node, dragNode, dropPosition }: TreeDropInfo) {
   //无法移动到默认场景之外
   if (node.label === window.$t("core.editor['Default Camera']") || node.label === window.$t("core.editor['Default Scene']")) return;
   // 要拖动到的目标模型
   const targetParentObject3D = App.scene.getObjectById(Number(node.key));
-  if(!targetParentObject3D) return;
+  if (!targetParentObject3D) return;
   // 被拖动的模型
   const dragObject3D = App.scene.getObjectById(Number(dragNode.key));
 
@@ -296,7 +376,7 @@ function handleSceneTreeDrop({node, dragNode, dropPosition}: TreeDropInfo) {
 }
 
 // 判断树节点是否可拖动到对应选择位置（拖动到内部时只能是Group / Scene）
-function allowDrop({dropPosition, node}) {
+function allowDrop({ dropPosition, node }) {
   if (dropPosition === "inside") {
     // 要拖动到的目标模型
     const targetParentObject3D = App.scene.getObjectById(Number(node.key));
@@ -323,7 +403,7 @@ function handlerTreeSelectChange(keys: Array<number>, _: Array<TreeOption>, meta
 }
 
 // 场景树节点点击事件，主要用于配合右键菜单
-function nodeProps({option}: { option: TreeOption }) {
+function nodeProps({ option }: { option: TreeOption }) {
   return {
     onContextmenu(e: MouseEvent): void {
       e.preventDefault();
@@ -351,7 +431,7 @@ function handleContextmenuSelect(key: string) {
 
   const object = App.scene.getObjectById(contextmenuTreeOption.value?.key as number);
 
-  if(!object) return;
+  if (!object) return;
 
   switch (key) {
     case "focus":
@@ -371,12 +451,13 @@ function handleContextmenuSelect(key: string) {
 
 onMounted(async () => {
   // 此signal必须在nextTick方法前注册，否则会造成viewer中已分发此处却尚未监听
-  Hooks.useAddOnceSignal("viewerInitCompleted",(viewer) => {
-    if(viewer.edit?.enabled){
+  Hooks.useAddOnceSignal("viewerInitCompleted", (viewer) => {
+    editEnabled.value = !!viewer.edit?.enabled;
+    if (viewer.edit?.enabled) {
       contextmenuOptions.push({
         label: t("home.Delete"),
         key: 'delete'
-      },{
+      }, {
         label: t("layout.header.Clone"),
         key: 'clone'
       })
@@ -407,14 +488,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <n-input v-model:value="pattern" :placeholder="t('layout.sider.scene.Search')"/>
-  <n-tree ref="sceneTreeRef" virtual-scroll :pattern="pattern" :data="sceneTreeData" v-model:selected-keys="sceneTreeSelected"
-          :show-irrelevant-nodes="false" v-model:expanded-keys="sceneTreeExpandedKeys" draggable :allow-drop="allowDrop"
-          :node-props="nodeProps" @drop="handleSceneTreeDrop" @update:selected-keys="handlerTreeSelectChange" block-line
-  />
+  <n-input v-model:value="pattern" :placeholder="t('layout.sider.scene.Search')" />
+  <n-tree ref="sceneTreeRef" virtual-scroll :pattern="pattern" :data="sceneTreeData"
+    v-model:selected-keys="sceneTreeSelected" :show-irrelevant-nodes="false"
+    v-model:expanded-keys="sceneTreeExpandedKeys" draggable :allow-drop="allowDrop" :node-props="nodeProps"
+    @drop="handleSceneTreeDrop" @update:selected-keys="handlerTreeSelectChange" block-line />
 
   <EsContextmenu ref="contextmenuRef" placement="right-start" trigger="manual" size="small"
-                 :options="contextmenuOptions" @select="handleContextmenuSelect"/>
+    :options="contextmenuOptions" @select="handleContextmenuSelect" />
 </template>
 
 <style lang="less" scoped>
@@ -434,6 +515,23 @@ onBeforeUnmount(() => {
 
   :deep(.n-tree-node-content__text) {
     flex-grow: unset;
+  }
+
+  :deep(.n-tree-node-content) {
+    width: 100%;
+  }
+
+  :deep(.n-tree-node-content__suffix) {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .scene-tree-node-suffix {
+    gap: 4px;
+  }
+
+  .scene-tree-node-actions {
+    flex-shrink: 0;
   }
 }
 </style>

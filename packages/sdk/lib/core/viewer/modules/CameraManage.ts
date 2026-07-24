@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import CameraControls from "camera-controls";
-import Viewer from "../Viewer"
+import Viewer from "../Viewer";
 
 /**
  * @author ErSan
@@ -9,187 +9,99 @@ import Viewer from "../Viewer"
  * @description 场景相机管理器。 TODO: 后续应把viewport.camera也管理进来
  */
 export class CameraManage {
-    private readonly viewer: Viewer;
+	private readonly viewer: Viewer;
+	private readonly defaultControlOptions: IViewerControl;
+	private readonly controls: CameraControls;
 
-    /**
-     * 默认交互相机参数
-     */
-    options: {};
+	constructor(viewer: Viewer, cameraControls: CameraControls) {
+		this.viewer = viewer;
+		this.controls = cameraControls;
+		this.defaultControlOptions = { ...viewer.options.control };
 
-    private readonly controls: CameraControls;
+		this.init();
+	}
 
-    constructor(viewer:Viewer,cameraControls:CameraControls) {
-        this.viewer = viewer;
-        this.controls = cameraControls;
+	init() {
+		this.resetInteract();
+	}
 
-        this.options = this.viewer.options.control;
+	/**
+	 * 恢复默认交互限制
+	 */
+	resetInteract() {
+		this.setInteract(this.defaultControlOptions);
+	}
 
-        this.init();
-    }
+	/**
+	 * 设置交互模式
+	 */
+	setInteract(config: Partial<IViewerControl>) {
+		const opt = Object.assign({}, this.defaultControlOptions, config);
 
-    init(){
-        this.setInteract(this.options);
-    }
+		Object.keys(opt).forEach(key => {
+			if ((this.controls as unknown as Record<string, unknown>)[key] !== undefined) {
+				(this.controls as unknown as Record<string, unknown>)[key] = opt[key as keyof IViewerControl];
+			}
+		});
+	}
 
-    /**
-     * 设置交互模式
-     */
-    setInteract(config){
-        const opt = Object.assign({}, this.options, config);
+	private switchView(rotate: () => Promise<void>): Promise<THREE.PerspectiveCamera> {
+		return rotate()
+			.then(() => {
+				this.resetInteract();
+				return this.viewer.camera;
+			})
+			.catch(error => {
+				this.resetInteract();
+				throw error;
+			});
+	}
 
-        Object.keys(opt).forEach(key => {
-            if(this.controls[key] !== undefined){
-                this.controls[key] = opt[key];
-            }
-        })
-    }
+	/**
+	 * 前视图
+	 * @description 以z轴方向为正前方
+	 */
+	front() {
+		return this.switchView(() => this.controls.rotateTo(0, Math.PI / 2, true));
+	}
 
-    /**
-     * 前视图
-     * @description 以z轴方向为正前方
-     */
-    front() {
-        return new Promise((resolve, reject) => {
-            try {
-                this.setInteract({
-                    minAzimuthAngle: 0,
-                    maxAzimuthAngle: 0,
-                    minPolarAngle: Math.PI / 2,
-                    maxPolarAngle: Math.PI / 2,
-                })
+	/**
+	 * 后视图
+	 * @description -z方向
+	 */
+	rear() {
+		return this.switchView(() => this.controls.rotateTo(Math.PI, Math.PI / 2, true));
+	}
 
-                this.controls.rotateTo(THREE.MathUtils.degToRad(0), THREE.MathUtils.degToRad(90), true).then(() => {
-                    this.controls.fitToSphere(this.viewer.scene, true);
-                })
+	/**
+	 * 左视图
+	 * @description -x方向
+	 */
+	left() {
+		return this.switchView(() => this.controls.rotateTo(Math.PI / 2, Math.PI / 2, true));
+	}
 
-                resolve(this.viewer.camera);
-            } catch (e) {
-                reject(e)
-            }
-        })
-    }
+	/**
+	 * 右视图
+	 * @description x方向
+	 */
+	right() {
+		return this.switchView(() => this.controls.rotateTo(-Math.PI / 2, Math.PI / 2, true));
+	}
 
-    /**
-     * 后视图
-     * @description -z方向
-     */
-    rear() {
-        return new Promise((resolve, reject) => {
-            try {
-                this.setInteract({
-                    minAzimuthAngle: -Math.PI,
-                    maxAzimuthAngle: -Math.PI,
-                    minPolarAngle: Math.PI / 2,
-                    maxPolarAngle: Math.PI / 2,
-                });
+	/**
+	 * 顶视图
+	 * @description y方向
+	 */
+	top() {
+		return this.switchView(() => this.controls.rotatePolarTo(Math.PI, true));
+	}
 
-                this.controls.rotateTo(THREE.MathUtils.degToRad(-180), THREE.MathUtils.degToRad(90), true).then(() => {
-                    this.controls.fitToSphere(this.viewer.scene, true);
-                })
-
-                resolve(this.viewer.camera);
-            } catch (e) {
-                reject(e)
-            }
-        })
-    }
-
-    /**
-     * 左视图
-     * @description -x方向
-     */
-    left() {
-        return new Promise((resolve, reject) => {
-            try {
-                this.setInteract({
-                    minAzimuthAngle: -Math.PI / 2,
-                    maxAzimuthAngle: -Math.PI / 2,
-                    minPolarAngle: Math.PI / 2,
-                    maxPolarAngle: Math.PI / 2,
-                });
-
-                this.controls.rotateTo(THREE.MathUtils.degToRad(-180), THREE.MathUtils.degToRad(180), true).then(() => {
-                    this.controls.fitToSphere(this.viewer.scene, true);
-                })
-
-                resolve(this.viewer.camera);
-            } catch (e) {
-                reject(e)
-            }
-        })
-    }
-
-    /**
-     * 右视图
-     * @description x方向
-     */
-    right() {
-        return new Promise((resolve, reject) => {
-            try {
-                this.setInteract({
-                    minAzimuthAngle: Math.PI / 2,
-                    maxAzimuthAngle: Math.PI / 2,
-                    minPolarAngle: Math.PI / 2,
-                    maxPolarAngle: Math.PI / 2
-                });
-
-                this.controls.rotateTo(THREE.MathUtils.degToRad(180), THREE.MathUtils.degToRad(180), true).then(() => {
-                    this.controls.fitToSphere(this.viewer.scene, true);
-                })
-
-                resolve(this.viewer.camera);
-            } catch (e) {
-                reject(e)
-            }
-        })
-    }
-
-    /**
-     * 顶视图
-     * @description y方向
-     */
-    top() {
-        return new Promise((resolve, reject) => {
-            try {
-                this.setInteract({
-                    minAzimuthAngle: -Infinity,
-                    maxAzimuthAngle: Infinity,
-                    minPolarAngle: 0,
-                    maxPolarAngle: 0,
-                })
-                this.controls.rotatePolarTo(0,true).then(() => {
-                    this.controls.fitToSphere(this.viewer.scene, true);
-                });
-
-                resolve(this.viewer.camera);
-            } catch (e) {
-                reject(e)
-            }
-        })
-    }
-
-    /**
-     * 底视图
-     * @description -y方向
-     */
-    bottom() {
-        return new Promise((resolve, reject) => {
-            try {
-                this.setInteract({
-                    minAzimuthAngle: -Infinity,
-                    maxAzimuthAngle: Infinity,
-                    minPolarAngle: Math.PI,
-                    maxPolarAngle: Math.PI,
-                });
-
-                this.controls.rotatePolarTo(Math.PI,true).then(() => {
-                    this.controls.fitToSphere(this.viewer.scene, true);
-                });
-
-                resolve(this.viewer.camera);
-            } catch (e) {
-                reject(e)
-            }
-        })
-    }
+	/**
+	 * 底视图
+	 * @description -y方向
+	 */
+	bottom() {
+		return this.switchView(() => this.controls.rotatePolarTo(0, true));
+	}
 }

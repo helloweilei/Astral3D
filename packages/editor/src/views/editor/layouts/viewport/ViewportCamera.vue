@@ -4,7 +4,7 @@
       <n-button round size="small">
         <template #icon>
           <n-icon>
-            <component :is="current.icon"/>
+            <component :is="current.icon" />
           </n-icon>
         </template>
         {{ current.label }}
@@ -13,27 +13,44 @@
     <n-radio-group v-model:value="current.uuid" size="small">
       <template v-for="song in options" :key="song.uuid">
         <n-radio :value="song.uuid" v-if="song.type !== 'divider'" @click="handlerChange(song)">
-          <div class="flex items-center">
-            <n-icon class="ml-10px mr-5px">
-              <component :is="song.icon"/>
-            </n-icon>
-            <span>{{ song.label }}</span>
+          <div class="camera-option">
+            <div class="camera-option__main">
+              <n-icon class="ml-10px mr-5px">
+                <component :is="song.icon" />
+              </n-icon>
+              <span>{{ song.label }}</span>
+            </div>
+            <div class="camera-option__actions">
+              <n-popover v-if="song.showSettings" trigger="click" placement="right-start" :show-arrow="false"
+                :style="{ padding: 0 }">
+                <template #trigger>
+                  <n-button quaternary circle size="tiny" @click.stop>
+                    <template #icon>
+                      <n-icon size="14">
+                        <Settings />
+                      </n-icon>
+                    </template>
+                  </n-button>
+                </template>
+                <ViewportCameraSettings @updated="handleSettingsUpdated" />
+              </n-popover>
+              <span v-if="song.shortcuts">{{ song.shortcuts }}</span>
+            </div>
           </div>
-
-          <span>{{ song.shortcuts }}</span>
         </n-radio>
         <n-divider title-placement="left" v-else> {{ song.label }}</n-divider>
       </template>
       <template v-for="song in sceneCamera" :key="song.uuid">
         <n-radio :value="song.uuid" v-if="song.type !== 'divider'" @click="handlerChange(song)">
-          <div class="flex items-center">
-            <n-icon class="ml-10px mr-5px">
-              <component :is="song.icon"/>
-            </n-icon>
-            <span>{{ song.label }}</span>
+          <div class="camera-option">
+            <div class="camera-option__main">
+              <n-icon class="ml-10px mr-5px">
+                <component :is="song.icon" />
+              </n-icon>
+              <span>{{ song.label }}</span>
+            </div>
+            <span v-if="song.shortcuts">{{ song.shortcuts }}</span>
           </div>
-
-          <span>{{ song.shortcuts }}</span>
         </n-radio>
         <n-divider title-placement="left" v-else> {{ song.label }}</n-divider>
       </template>
@@ -42,125 +59,129 @@
 </template>
 
 <script lang="ts" setup>
-import type {ComputedRef} from "vue";
-import {ref, markRaw, onMounted, onBeforeUnmount} from "vue";
-import {Camera,Object3D} from 'three';
-import {App, Hooks} from "@astral3d/engine";
-import {
-  OpenPanelFilledTop,
-  OpenPanelFilledBottom,
-  OpenPanelFilledLeft,
-  OpenPanelFilledRight,
-  RotateCounterclockwiseAlt,
-  RotateClockwiseAlt,
-  Carbon3DMprToggle, CenterToFit
-} from '@vicons/carbon';
-import {cpt} from "@/language";
+import type { ComputedRef } from "vue";
+import { ref, markRaw, onMounted, onBeforeUnmount } from "vue";
+import * as THREE from "three";
+import { App, Hooks, SetValueCommand } from "@astral3d/engine";
+import { Carbon3DMprToggle, CenterToFit, Settings } from "@vicons/carbon";
+import { t } from "@/language";
+import ViewportCameraSettings from "./ViewportCameraSettings.vue";
+
+const CUSTOM_CAMERA_UUID = "__custom_camera__";
+const DEFAULT_CAMERA_POSITION = { x: 10, y: 5, z: 10 };
+const DEFAULT_CAMERA_TARGET = { x: 0, y: 0, z: 0 };
+const DEFAULT_CAMERA_FOV = 45;
+const DEFAULT_CAMERA_NEAR = 0.01;
+const DEFAULT_CAMERA_FAR = 100 * 1000;
 
 interface IOption {
-  label: ComputedRef<string> | string,
-  uuid: string,
-  type?: string,
-  icon?: any,
-  shortcuts?: string,
-  children?: IOption[]
+  label: ComputedRef<string> | string;
+  uuid: string;
+  type?: string;
+  icon?: any;
+  shortcuts?: string;
+  showSettings?: boolean;
+  mode?: "default" | "custom" | "scene";
 }
-
-const defaultCamera = [
-  {
-    uuid: "divider",
-    type: "divider",
-    label: cpt("layout.scene.toolbar.Six views")
-  },
-  {
-    uuid: "Top",
-    label: cpt("layout.scene.toolbar.Top"),
-    icon: markRaw(OpenPanelFilledTop),
-    shortcuts: "ALT+J"
-  },
-  {
-    uuid: "Bottom",
-    label: cpt("layout.scene.toolbar.Bottom"),
-    icon: markRaw(OpenPanelFilledBottom),
-    shortcuts: "ALT+SHIFT+J"
-  },
-  {
-    uuid: "Left",
-    label: cpt("layout.scene.toolbar.Left"),
-    icon: markRaw(OpenPanelFilledLeft),
-    shortcuts: "ALT+K"
-  },
-  {
-    uuid: "Right",
-    label: cpt("layout.scene.toolbar.Right"),
-    icon: markRaw(OpenPanelFilledRight),
-    shortcuts: "ALT+SHIFT+K"
-  },
-  {
-    uuid: "Front",
-    label: cpt("layout.scene.toolbar.Front"),
-    icon: markRaw(RotateCounterclockwiseAlt),
-    shortcuts: "ALT+H"
-  },
-  {
-    uuid: "Back",
-    label: cpt("layout.scene.toolbar.Back"),
-    icon: markRaw(RotateClockwiseAlt),
-    shortcuts: "ALT+SHIFT+H"
-  }
-]
 
 const current = ref<IOption>({
   label: "",
-  uuid: ""
+  uuid: "",
 });
-const options = ref<IOption[]>()
-const sceneCamera = ref<IOption[]>();
+const options = ref<IOption[]>([]);
+const sceneCamera = ref<IOption[]>([]);
+const currentMode = ref<"default" | "custom" | "scene">("default");
 
-function handlerChange(value: IOption) {
-  // @ts-ignore
-  current.value = value;
+function resetDefaultCamera() {
+  if (!window.viewer) return;
 
-  const cameraManage = window.viewer.modules.cameraManage;
-  switch (value.uuid) {
-    case "Front":
-      cameraManage.front().then((camera: Camera) => {
-        App.setViewportCamera(camera.uuid);
-      })
-      break;
-    case "Back":
-      cameraManage.rear().then((camera: Camera) => {
-        App.setViewportCamera(camera.uuid);
-      })
-      break;
-    case "Left":
-      cameraManage.left().then((camera: Camera) => {
-        App.setViewportCamera(camera.uuid);
-      })
-      break;
-    case "Right":
-      cameraManage.right().then((camera: Camera) => {
-        App.setViewportCamera(camera.uuid);
-      })
-      break;
-    case "Top":
-      cameraManage.top().then((camera: Camera) => {
-        App.setViewportCamera(camera.uuid);
-      })
-      break;
-    case "Bottom":
-      cameraManage.bottom().then((camera: Camera) => {
-        App.setViewportCamera(camera.uuid);
-      })
-      break;
-    default:
-      cameraManage.setInteract({});
-      App.setViewportCamera(current.value.uuid);
-      break;
+  const aspect = window.viewer.container.offsetWidth / window.viewer.container.offsetHeight || 1;
+
+  if (!App.camera.isPerspectiveCamera) {
+    const nextCamera = new THREE.PerspectiveCamera(DEFAULT_CAMERA_FOV, aspect, DEFAULT_CAMERA_NEAR, DEFAULT_CAMERA_FAR);
+    nextCamera.name = t("core.editor.Default Camera");
+    replaceEditorCamera(nextCamera);
+  } else {
+    App.execute(new SetValueCommand(App.camera, "name", t("core.editor.Default Camera")));
+    App.execute(new SetValueCommand(App.camera, "fov", DEFAULT_CAMERA_FOV));
+    App.execute(new SetValueCommand(App.camera, "near", DEFAULT_CAMERA_NEAR));
+    App.execute(new SetValueCommand(App.camera, "far", DEFAULT_CAMERA_FAR));
+    App.camera.updateProjectionMatrix();
+  }
+
+  window.viewer.modules.controls.setLookAt(
+    DEFAULT_CAMERA_POSITION.x,
+    DEFAULT_CAMERA_POSITION.y,
+    DEFAULT_CAMERA_POSITION.z,
+    DEFAULT_CAMERA_TARGET.x,
+    DEFAULT_CAMERA_TARGET.y,
+    DEFAULT_CAMERA_TARGET.z,
+    true
+  );
+  window.viewer.render();
+}
+
+function replaceEditorCamera(newCamera: THREE.PerspectiveCamera) {
+  const oldCamera = App.camera;
+
+  newCamera.uuid = oldCamera.uuid;
+  newCamera.position.copy(oldCamera.position);
+  newCamera.rotation.copy(oldCamera.rotation);
+  newCamera.quaternion.copy(oldCamera.quaternion);
+  newCamera.up.copy(oldCamera.up);
+
+  delete App.cameras[oldCamera.uuid];
+  App.cameras[newCamera.uuid] = newCamera;
+  App.camera = newCamera;
+  window.viewer.camera = newCamera;
+  window.viewer.modules.controls.camera = newCamera;
+  window.viewer.updateAspectRatio();
+
+  if (App.viewportCamera === oldCamera) {
+    App.setViewportCamera(newCamera.uuid);
   }
 }
 
-function handlerOptionsUpdate() {
+function handlerChange(value: IOption) {
+  current.value = value;
+
+  const cameraManage = window.viewer.modules.cameraManage;
+
+  if (value.uuid === App.camera.uuid) {
+    currentMode.value = "default";
+    resetDefaultCamera();
+    cameraManage.resetInteract();
+    App.setViewportCamera(App.camera.uuid);
+    return;
+  }
+
+  if (value.uuid === CUSTOM_CAMERA_UUID) {
+    currentMode.value = "custom";
+    cameraManage.resetInteract();
+    App.setViewportCamera(App.camera.uuid);
+    current.value = {
+      ...value,
+      label: App.camera.name || t("core.editor.Custom Camera"),
+    };
+    return;
+  }
+
+  currentMode.value = "scene";
+  cameraManage.resetInteract();
+  App.setViewportCamera(value.uuid);
+}
+
+function handleSettingsUpdated() {
+  if (currentMode.value === "custom") {
+    current.value = {
+      ...current.value,
+      label: App.camera.name || t("core.editor.Custom Camera"),
+    };
+  }
+  handlerOptionsUpdate(false);
+}
+
+function handlerOptionsUpdate(resetCurrent = true) {
   options.value = [];
   sceneCamera.value = [];
 
@@ -169,43 +190,65 @@ function handlerOptionsUpdate() {
     const camera = cameras[key];
 
     if (camera.uuid === App.camera.uuid) {
-      // 默认透视相机
       options.value.unshift({
         uuid: App.camera.uuid,
-        // label: cpt("layout.header.PerspectiveCamera"),
-        label: cpt("core.editor.Default Camera"),
+        label: t("core.editor.Default Camera"),
         icon: markRaw(Carbon3DMprToggle),
-        shortcuts: "ALT+G"
-      })
+        shortcuts: "ALT+G",
+        mode: "default",
+      });
+
+      options.value.push({
+        uuid: CUSTOM_CAMERA_UUID,
+        label: t("core.editor.Custom Camera"),
+        icon: markRaw(Carbon3DMprToggle),
+        showSettings: true,
+        mode: "custom",
+      });
       continue;
     }
 
-    // 场景相机
     sceneCamera.value.push({
       uuid: camera.uuid,
       label: camera.name,
       icon: camera.type === "PerspectiveCamera" ? markRaw(Carbon3DMprToggle) : markRaw(CenterToFit),
-      shortcuts: ""
-    })
+      shortcuts: "",
+      mode: "scene",
+    });
   }
-
-  options.value.push(...defaultCamera);
 
   if (sceneCamera.value.length > 0) {
     sceneCamera.value.unshift({
       uuid: "divider2",
       type: "divider",
-      label: cpt("layout.scene.toolbar['Scene camera']")
-    })
+      label: t("layout.scene.toolbar['Scene camera']"),
+    });
   }
 
-  // @ts-ignore
-  !current.value.uuid && (current.value = options.value[0]);
+  if (resetCurrent && !current.value.uuid) {
+    current.value = options.value[0];
+  } else if (currentMode.value === "custom") {
+    current.value = {
+      uuid: CUSTOM_CAMERA_UUID,
+      label: App.camera.name || t("core.editor.Custom Camera"),
+      icon: markRaw(Carbon3DMprToggle),
+      showSettings: true,
+      mode: "custom",
+    };
+  } else if (currentMode.value === "default") {
+    current.value = options.value.find(item => item.mode === "default") || options.value[0];
+  }
 }
 
-function objectChanged(object: Object3D) {
-  if (object instanceof Camera) {
-    handlerOptionsUpdate();
+function objectChanged(object: THREE.Object3D) {
+  if (object === App.camera || object instanceof THREE.Camera) {
+    handlerOptionsUpdate(false);
+    if (currentMode.value === "custom" && object === App.camera) {
+      current.value = {
+        ...current.value,
+        label: App.camera.name || t("core.editor.Custom Camera"),
+      };
+    }
   }
 }
 
@@ -215,12 +258,13 @@ onMounted(() => {
   Hooks.useAddSignal("objectChanged", objectChanged);
 
   handlerOptionsUpdate();
-})
+});
+
 onBeforeUnmount(() => {
   Hooks.useRemoveSignal("cameraAdded", handlerOptionsUpdate);
   Hooks.useRemoveSignal("cameraRemoved", handlerOptionsUpdate);
   Hooks.useRemoveSignal("objectChanged", objectChanged);
-})
+});
 </script>
 
 <style lang="less" scoped>
@@ -239,13 +283,34 @@ onBeforeUnmount(() => {
     :deep(.n-radio__label) {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      width: 180px;
+      width: 220px;
+    }
+  }
 
-      & > span {
-        font-size: 12px;
-        color: var(--n-text-color-disabled);
-      }
+  .camera-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .camera-option__main {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .camera-option__actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    flex-shrink: 0;
+
+    & > span {
+      font-size: 12px;
+      color: var(--n-text-color-disabled);
     }
   }
 

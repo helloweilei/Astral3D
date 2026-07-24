@@ -467,6 +467,7 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 
 		if (!this.options.grid.enabled) {
 			this.grid.visible = false;
+			this.updateAxes();
 			return;
 		}
 
@@ -544,37 +545,68 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 		mainGrid.visible = true;
 	}
 
+	disposeAxes() {
+		if (!this.axes) return;
+
+		this.axes.traverse(child => {
+			if (child instanceof THREE.Line) {
+				child.geometry.dispose();
+				const material = child.material;
+				if (Array.isArray(material)) {
+					material.forEach(item => item.dispose());
+				} else {
+					material.dispose();
+				}
+			}
+		});
+		this.axes.removeFromParent();
+		this.axes = undefined;
+	}
+
 	updateAxes() {
-		if (this.options.grid.showAxes) {
-			if (!this.axes) {
-				this.axes = new THREE.Group();
-				this.axes.ignore = true;
+		this.disposeAxes();
 
-				const length = 20;
-				const materialX = new THREE.LineBasicMaterial({ color: 0xff0000, depthTest: false, depthWrite: false });
-				const materialY = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, depthWrite: false });
-				const materialZ = new THREE.LineBasicMaterial({ color: 0x0000ff, depthTest: false, depthWrite: false });
+		if (!this.options.grid.showAxes || !this.options.grid.enabled) {
+			return;
+		}
 
-				const geometryX = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(length, 0, 0)]);
-				const geometryY = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, length, 0)]);
-				const geometryZ = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, length)]);
+		const gridSize = this.options.grid.row;
+		const mainDivisions = this.options.grid.column;
+		const subDivisions = mainDivisions * 5;
+		const subCellSize = gridSize / subDivisions;
+		const length = subCellSize * 20;
 
-				const lineX = new THREE.Line(geometryX, materialX);
-				const lineY = new THREE.Line(geometryY, materialY);
-				const lineZ = new THREE.Line(geometryZ, materialZ);
+		this.axes = new THREE.Group();
+		this.axes.ignore = true;
+		this.axes.renderOrder = 1000;
 
-				lineX.renderOrder = 1000;
-				lineY.renderOrder = 1000;
-				lineZ.renderOrder = 1000;
+		const createAxisMaterial = (color: number) =>
+			new THREE.LineBasicMaterial({
+				color,
+				transparent: true,
+				opacity: 1,
+				depthTest: false,
+				depthWrite: false,
+			});
 
-				this.axes.add(lineX, lineY, lineZ);
-				this.scene.add(this.axes);
-			}
-			this.axes.visible = true;
+		const geometryX = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(length, 0, 0)]);
+		const geometryY = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, length, 0)]);
+		const geometryZ = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, length)]);
+
+		const lineX = new THREE.Line(geometryX, createAxisMaterial(0xff0000));
+		const lineY = new THREE.Line(geometryY, createAxisMaterial(0x00ff00));
+		const lineZ = new THREE.Line(geometryZ, createAxisMaterial(0x0000ff));
+
+		lineX.renderOrder = 1000;
+		lineY.renderOrder = 1000;
+		lineZ.renderOrder = 1000;
+
+		this.axes.add(lineX, lineY, lineZ);
+
+		if (this.grid) {
+			this.grid.add(this.axes);
 		} else {
-			if (this.axes) {
-				this.axes.visible = false;
-			}
+			this.scene.add(this.axes);
 		}
 	}
 
@@ -583,6 +615,15 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 	 */
 	initModules() {
 		const controls = new CameraControls(this.camera);
+		controls.setLookAt(
+			this.camera.position.x,
+			this.camera.position.y,
+			this.camera.position.z,
+			0,
+			0,
+			0,
+			false
+		);
 		controls.addEventListener("update", () => {
 			useDispatchSignal("cameraChanged", this.camera, controls);
 		});

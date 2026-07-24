@@ -107,7 +107,7 @@ export default class Preview extends THREE.EventDispatcher<PreviewerEventMap>  {
     basicCreation(){
         const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100 * 1000);
         camera.name = "Camera";
-        camera.position.set(0, 5, 10);
+        camera.position.set(10, 5, 10);
         camera.lookAt(new THREE.Vector3());
 
         const scene = new THREE.Scene();
