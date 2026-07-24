@@ -30,6 +30,14 @@
                :placeholder="t('setting.shortcuts.Please press a key')"
                @keyup="shortcutsKeyup($event, 'focus')"/>
     </n-form-item>
+    <n-form-item :label="t('setting.shortcuts.Roam Toggle')">
+      <n-input v-model:value="form.roamToggle" readonly maxlength="1"
+               :placeholder="t('setting.shortcuts.Please press a key')"
+               @keyup="shortcutsKeyup($event, 'roamToggle')"/>
+      <EsTip class="ml-1">
+        ALT + {{ form.roamToggle.toUpperCase() }} {{ t('layout.viewport.toggleNavigationMode') }}
+      </EsTip>
+    </n-form-item>
   </n-form>
 </template>
 
@@ -47,6 +55,7 @@ const form = reactive({
   scale: App.config.getShortcutItem('scale'),
   undo: App.config.getShortcutItem('undo'),
   focus: App.config.getShortcutItem('focus'),
+  roamToggle: App.config.getShortcutItem('roamToggle') || 'm',
 })
 
 // 快捷键输入框keyup
@@ -74,9 +83,11 @@ onMounted(() => {
         if (parent !== null) App.execute(new RemoveObjectCommand(object));
         break;
       case App.config.getShortcutItem('translate'):
+        if (window.viewer?.modules?.cameraManage?.getNavigationMode() === 'roam') return;
         Hooks.useDispatchSignal('transformModeChanged', 'translate');
         break;
       case App.config.getShortcutItem('rotate'):
+        if (window.viewer?.modules?.cameraManage?.getNavigationMode() === 'roam') return;
         Hooks.useDispatchSignal('transformModeChanged', 'rotate');
         break;
       case App.config.getShortcutItem('scale'):

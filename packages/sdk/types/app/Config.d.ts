@@ -5,6 +5,12 @@ declare namespace IAppConfig {
         scale: string;
         undo: string;
         focus: string;
+        roamToggle: string;
+    }
+
+    interface Camera {
+        navigationMode: "orbit" | "roam";
+        roamMoveSpeed: number;
     }
 
     interface Config {
@@ -13,5 +19,6 @@ declare namespace IAppConfig {
         history: boolean;
         shortcuts: Shortcuts;
         roamingCharacter: string;
+        camera: Camera;
     }
 }

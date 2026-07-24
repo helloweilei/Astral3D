@@ -18,7 +18,8 @@ import {
   LocationCompany,
   View,
   ViewOff,
-  TrashCan
+  TrashCan,
+  Renew
 } from '@vicons/carbon';
 import { t } from "@/language";
 import { App, Hooks, MoveObjectCommand, RemoveObjectCommand, AddObjectCommand, SetValueCommand } from "@astral3d/engine";
@@ -69,6 +70,42 @@ function confirmDelete(object3D) {
       }
     },
   });
+}
+
+function getCameraResetSuffix(disabled = false) {
+  return () =>
+    h("div", { class: "scene-tree-node-suffix flex items-center ml-auto" }, [
+      h(
+        NButton,
+        {
+          quaternary: true,
+          circle: true,
+          size: "tiny",
+          disabled,
+          title: t("layout.sider.scene['Reset camera']"),
+          onClick: (event: Event) => {
+            event.stopPropagation();
+            resetDefaultCamera();
+          },
+        },
+        {
+          icon: () =>
+            h(NIcon, { size: 14 }, {
+              default: () => h(Renew),
+            }),
+        }
+      ),
+    ]);
+}
+
+function resetDefaultCamera() {
+  if (!window.viewer?.modules?.cameraManage) return;
+
+  window.viewer.modules.cameraManage.resetToDefault(true);
+  App.config.setKey("camera.navigationMode", "orbit");
+  App.setViewportCamera(App.camera.uuid);
+  Hooks.useDispatchSignal("cameraChanged", App.camera, window.viewer.modules.controls);
+  refreshUI();
 }
 
 function getMeshInfoSuffix(geometry, material) {
@@ -183,6 +220,7 @@ function refreshUI() {
     isLeaf: true,
     disabled: (App.locked && App.locked.uuid !== camera.uuid),
     prefix: getPrefixIcon(camera.type),
+    suffix: getCameraResetSuffix(Boolean(App.locked && App.locked.uuid !== camera.uuid)),
   });
 
   const sceneDisabled = (App.locked && App.locked.uuid !== scene.uuid) as boolean;

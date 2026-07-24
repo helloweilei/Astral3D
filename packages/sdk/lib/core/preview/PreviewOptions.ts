@@ -20,5 +20,7 @@ export const PreviewOptions = (): IPreviewSetting => ({
         dollySpeed:1,
         // 缩放是否以鼠标位置为中心
         dollyToCursor: false,
+        navigationMode: "orbit",
+        roamMoveSpeed: 20,
     }
 })

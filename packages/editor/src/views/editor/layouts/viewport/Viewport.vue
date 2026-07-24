@@ -36,6 +36,9 @@ onMounted(async () => {
     mainColor: globalStore.mainColor.hexHover
   });
 
+  const navigationMode = App.config.getKey("camera.navigationMode") ?? "orbit";
+  const roamMoveSpeed = App.config.getKey("camera.roamMoveSpeed") ?? 20;
+
   window.viewer = new Viewer({
     container: viewportRef.value,
     edit: {
@@ -43,24 +46,45 @@ onMounted(async () => {
     },
     request: {
       baseUrl:"/file/static/"
-    }
+    },
+    control: {
+      navigationMode,
+      roamMoveSpeed,
+    },
   });
 
   await nextTick();
 
-  // 添加astral engine内置插件并监听插件注册
   pluginStore.setPlugins(Array.from(window.viewer.modules.plugin.plugins.values()));
-  Hooks.useAddSignal("pluginInstall",pluginStore.addPlugin);
-  Hooks.useAddSignal("pluginUninstall",pluginStore.removePlugin);
-  
-  // 注册astral editor内置插件
+  Hooks.useAddSignal("pluginInstall", pluginStore.addPlugin);
+  Hooks.useAddSignal("pluginUninstall", pluginStore.removePlugin);
+
   installBuiltinPlugin(window.viewer);
+
+  window.addEventListener("keydown", handleCameraNavigationShortcut);
 })
 
+function handleCameraNavigationShortcut(event: KeyboardEvent) {
+  const target = event.target as HTMLElement | null;
+  if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName.toUpperCase())) {
+    return;
+  }
+
+  const roamToggle = (App.config.getShortcutItem("roamToggle") || "m").toLowerCase();
+  if (event.altKey && event.key.toLowerCase() === roamToggle) {
+    event.preventDefault();
+    const mode = window.viewer?.modules?.cameraManage?.toggleNavigationMode();
+    if (mode) {
+      App.config.setKey("camera.navigationMode", mode);
+    }
+  }
+}
+
 onBeforeUnmount(() => {
-  Hooks.useRemoveSignal("pluginInstall",pluginStore.addPlugin);
-  Hooks.useRemoveSignal("pluginUninstall",pluginStore.removePlugin);
-})
+  Hooks.useRemoveSignal("pluginInstall", pluginStore.addPlugin);
+  Hooks.useRemoveSignal("pluginUninstall", pluginStore.removePlugin);
+  window.removeEventListener("keydown", handleCameraNavigationShortcut);
+});
 
 function handleViewportPointerdown(){
   const focusedElement = document.activeElement;

@@ -63,12 +63,31 @@
         <EsInputNumber v-model:value="form.far" size="tiny" :show-button="false" :decimal="2" :min="1"
           @change="updateNearFar('far')" />
       </n-form-item>
+
+      <n-form-item :label="t('layout.viewport.navigationMode')">
+        <n-radio-group v-model:value="form.navigationMode" size="small" @update:value="updateNavigationMode">
+          <n-radio value="orbit">{{ t("layout.viewport.orbitNavigation") }}</n-radio>
+          <n-radio value="roam">{{ t("layout.viewport.roamNavigation") }}</n-radio>
+        </n-radio-group>
+      </n-form-item>
+
+      <n-form-item v-if="form.navigationMode === 'roam'" :label="t('layout.viewport.roamMoveSpeed')">
+        <EsInputNumber v-model:value="form.roamMoveSpeed" size="tiny" :show-button="false" :decimal="0" :min="1"
+          :max="1000" @change="updateRoamMoveSpeed" />
+      </n-form-item>
+
+      <n-form-item v-if="form.navigationMode === 'roam'" :label="t('setting.shortcuts.Roam Toggle')">
+        <span class="text-xs text-gray-400">ALT + {{ roamToggleKey.toUpperCase() }}</span>
+      </n-form-item>
+      <n-form-item v-if="form.navigationMode === 'roam'" :label="t('layout.viewport.roamControls')">
+        <span class="text-xs text-gray-400">{{ t("layout.viewport.roamControlsHint") }}</span>
+      </n-form-item>
     </n-form>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { reactive, onMounted, onBeforeUnmount } from "vue";
+import { reactive, computed, onMounted, onBeforeUnmount } from "vue";
 import * as THREE from "three";
 import { App, Hooks, SetValueCommand, Utils } from "@astral3d/engine";
 import EsInputNumber from "@/components/es/EsInputNumber.vue";
@@ -94,7 +113,11 @@ const form = reactive({
   bottom: -1,
   near: DEFAULT_NEAR,
   far: DEFAULT_FAR,
+  navigationMode: "orbit" as "orbit" | "roam",
+  roamMoveSpeed: 20,
 });
+
+const roamToggleKey = computed(() => App.config.getShortcutItem("roamToggle") || "m");
 
 let syncing = false;
 
@@ -129,6 +152,17 @@ function replaceEditorCamera(newCamera: THREE.PerspectiveCamera | THREE.Orthogra
   if (App.viewportCamera === oldCamera) {
     App.setViewportCamera(newCamera.uuid);
   }
+}
+
+function syncNavigationSettings() {
+  if (window.viewer?.modules?.cameraManage) {
+    form.navigationMode = window.viewer.modules.cameraManage.getNavigationMode();
+    form.roamMoveSpeed = window.viewer.modules.cameraManage.getRoamMoveSpeed();
+    return;
+  }
+
+  form.navigationMode = App.config.getKey("camera.navigationMode") ?? "orbit";
+  form.roamMoveSpeed = App.config.getKey("camera.roamMoveSpeed") ?? 20;
 }
 
 function syncFromCamera() {
@@ -257,6 +291,22 @@ function updateNearFar(key: "near" | "far") {
   notifyUpdated();
 }
 
+function updateNavigationMode(value: "orbit" | "roam") {
+  if (syncing || !window.viewer) return;
+
+  window.viewer.modules.cameraManage.setNavigationMode(value);
+  App.config.setKey("camera.navigationMode", value);
+  window.viewer.render();
+}
+
+function updateRoamMoveSpeed() {
+  if (syncing || !window.viewer) return;
+
+  window.viewer.modules.cameraManage.setRoamMoveSpeed(form.roamMoveSpeed);
+  App.config.setKey("camera.roamMoveSpeed", form.roamMoveSpeed);
+  notifyUpdated();
+}
+
 function handleCameraChanged() {
   if (App.viewportCamera !== App.camera) return;
   syncFromCameraThrottled();
@@ -269,6 +319,7 @@ function handleObjectChanged(object: THREE.Object3D) {
 
 onMounted(() => {
   syncFromCamera();
+  syncNavigationSettings();
   Hooks.useAddSignal("cameraChanged", handleCameraChanged);
   Hooks.useAddSignal("viewportCameraChanged", syncFromCamera);
   Hooks.useAddSignal("objectChanged", handleObjectChanged);

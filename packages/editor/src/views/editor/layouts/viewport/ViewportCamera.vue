@@ -143,6 +143,7 @@ function replaceEditorCamera(newCamera: THREE.PerspectiveCamera) {
 }
 
 function handlerChange(value: IOption) {
+  const isSameSelection = current.value.uuid === value.uuid;
   current.value = value;
 
   const cameraManage = window.viewer.modules.cameraManage;
@@ -150,14 +151,20 @@ function handlerChange(value: IOption) {
   if (value.uuid === App.camera.uuid) {
     currentMode.value = "default";
     resetDefaultCamera();
-    cameraManage.resetInteract();
+    if (!isSameSelection) {
+      cameraManage.resetInteract();
+    }
     App.setViewportCamera(App.camera.uuid);
     return;
   }
 
   if (value.uuid === CUSTOM_CAMERA_UUID) {
     currentMode.value = "custom";
-    cameraManage.resetInteract();
+    if (!isSameSelection) {
+      cameraManage.setNavigationMode("orbit");
+      App.config.setKey("camera.navigationMode", "orbit");
+      cameraManage.resetInteract();
+    }
     App.setViewportCamera(App.camera.uuid);
     current.value = {
       ...value,
@@ -167,7 +174,9 @@ function handlerChange(value: IOption) {
   }
 
   currentMode.value = "scene";
-  cameraManage.resetInteract();
+  if (!isSameSelection) {
+    cameraManage.resetInteract();
+  }
   App.setViewportCamera(value.uuid);
 }
 

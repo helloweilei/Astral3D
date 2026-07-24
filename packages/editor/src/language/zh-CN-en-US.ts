@@ -106,6 +106,13 @@ export default {
 		},
 		viewport: {
 			projection: "投影",
+			navigationMode: "导航模式",
+			orbitNavigation: "环视",
+			roamNavigation: "漫游",
+			roamMoveSpeed: "漫游速度",
+			roamControls: "漫游操作",
+			roamControlsHint: "WASD/方向键移动，Q/E 升降，鼠标左键环视",
+			toggleNavigationMode: "切换环视/漫游",
 		},
 		scene: {
 			toolbar: {
@@ -139,6 +146,7 @@ export default {
 			Project: "项目",
 			scene: {
 				Search: "搜索",
+				"Reset camera": "复位相机",
 				"Click Upload": "点击上传",
 				// 几何组件tab
 				Center: "居中",
@@ -607,6 +615,7 @@ export default {
 			Undo: "撤销",
 			Redo: "重做",
 			Focus: "聚焦",
+			"Roam Toggle": "环视/漫游切换",
 		},
 		"System Setting": "系统设置",
 		system: {

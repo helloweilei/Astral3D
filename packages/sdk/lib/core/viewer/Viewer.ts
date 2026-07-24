@@ -616,7 +616,7 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 	 * 初始化功能模块
 	 */
 	initModules() {
-		const controls = new CameraControls(this.camera);
+		const controls = new CameraControls(this.camera, this.renderer.domElement);
 		controls.setLookAt(this.camera.position.x, this.camera.position.y, this.camera.position.z, 0, 0, 0, false);
 		controls.addEventListener("update", () => {
 			useDispatchSignal("cameraChanged", this.camera, controls);
@@ -1146,6 +1146,10 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 
 		if (this.modules.controls.enabled && !this.modules.viewHelper.animating) {
 			needRender = this.modules.controls.update(timeStamp) || needRender;
+		}
+
+		if (this.modules.cameraManage.updateNavigation(timeStamp)) {
+			needRender = true;
 		}
 
 		if (this.modules.weather.update(timeStamp)) {

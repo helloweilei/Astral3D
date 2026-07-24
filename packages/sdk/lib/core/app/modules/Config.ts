@@ -28,9 +28,14 @@ class Config {
                 scale: 'r',
                 undo: 'z',
                 focus: 'f',
+                roamToggle: 'm',
             },
             //漫游角色
-            roamingCharacter: ROAMING_CHARACTERS.JACKIE
+            roamingCharacter: ROAMING_CHARACTERS.JACKIE,
+            camera: {
+                navigationMode: 'orbit',
+                roamMoveSpeed: 20,
+            },
         };
 
         this.syncStorage();
