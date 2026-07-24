@@ -1,8 +1,6 @@
 <script setup lang="ts">
-import {h, onBeforeUnmount, onMounted, ref,markRaw,nextTick} from "vue";
-import type {DefineComponent} from "vue";
-import { NIcon, NTooltip } from "naive-ui";
-import type { TabsInst } from 'naive-ui'
+import { onBeforeUnmount, onMounted, ref, markRaw, nextTick } from "vue";
+import type { TabsInst } from "naive-ui";
 import {
   EarthFilled,
   Cube,
@@ -18,14 +16,15 @@ import {
   ImageReference,
   LocationHeart,
   LocationCompany,
+  Globe,
 } from "@vicons/carbon";
 
-import { t } from "@/language";
-import {Utils,Hooks} from "@astral3d/engine";
+import { Utils, Hooks } from "@astral3d/engine";
 import SidebarScene from "./sidebar/SidebarScene.vue";
 import SidebarRenderer from "./sidebar/SidebarRenderer.vue";
 import SidebarEffect from "./sidebar/SidebarEffect.vue";
 import SidebarWeather from "./sidebar/SidebarWeather.vue";
+import SidebarTerrain from "./sidebar/SidebarTerrain.vue";
 import SidebarHistory from "./sidebar/SidebarHistory.vue";
 import SidebarObject from "./sidebar/SidebarObject.vue";
 import SidebarGeometry from "./sidebar/SidebarGeometry.vue";
@@ -36,24 +35,16 @@ import SidebarDrawing from "./sidebar/SidebarDrawing.vue";
 import SidebarParticle from "./sidebar/SidebarParticle.vue";
 import SidebarBillboard from "./sidebar/SidebarBillboard.vue";
 import SidebarHtmlPanel from "./sidebar/SidebarHtmlPanel.vue";
+import SidebarTabIcon from "./sidebar/SidebarTabIcon.vue";
 
 const tabsInstRef = ref<TabsInst | null>(null);
 const tabs = ref<Array<any>>([]);
-const current = ref<string>('scene');
+const current = ref<string>("scene");
 
-function iconTabName(icon: { text: string,color:string,component: DefineComponent }) {
-    return h(NTooltip, {
-        placement: "left",
-        trigger: "hover"
-    }, {
-        default: () => t(`layout.sider["${icon.text}"]`),
-        trigger: () => h(NIcon, { size: 14,color:icon.color }, () => h(icon.component)),
-    })
-}
-
-function setTabs(object){
+function setTabs(object) {
   const sceneTabs = [
       { name: "scene", icon: { text: 'Scene config',color:"#A9A9A9", component: markRaw(EarthFilled) }, component: markRaw(SidebarScene) },
+      { name: "terrain", icon: { text: 'Terrain config', color: "#4CAF50", component: markRaw(Globe) }, component: markRaw(SidebarTerrain) },
       { name: "renderer", icon: { text: 'Renderer config',color:"#A9A9A9", component: markRaw(ImageReference) }, component: markRaw(SidebarRenderer) },
       { name: "effect", icon: { text: 'Post processing',color:"#A9A9A9", component: markRaw(MagicWandFilled) }, component: markRaw(SidebarEffect) },
       { name: "weather", icon: { text: 'Weather',color:"#A9A9A9", component: markRaw(CloudSnow) }, component: markRaw(SidebarWeather) },
@@ -131,9 +122,12 @@ onBeforeUnmount(() => {
 <template>
     <n-tabs ref="tabsInstRef" v-model:value="current" type="line" size="small" pane-class="!p-10px overflow-y-auto" id="sidebar-attributes"
         placement="left">
-        <n-tab-pane v-for="t in tabs" :key="t.name" :name="t.name" :tab="iconTabName(t.icon)"
-            display-directive="show" :disabled="t.name === 'disabled'">
-            <component :is="t.component" />
+        <n-tab-pane v-for="tab in tabs" :key="tab.name" :name="tab.name"
+            display-directive="show" :disabled="tab.name === 'disabled'">
+            <template #tab>
+                <SidebarTabIcon v-bind="tab.icon" />
+            </template>
+            <component :is="tab.component" />
         </n-tab-pane>
     </n-tabs>
 </template>

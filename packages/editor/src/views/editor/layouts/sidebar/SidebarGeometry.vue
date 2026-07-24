@@ -133,12 +133,12 @@ const update = (method: string) => {
     <!-- parameters -->
     <div>
       <SidebarGeometryModifiers v-if="geometryData.type === 'BufferGeometry'"/>
-      <Suspense v-else>
-        <template #default>
-          <currentParametersComponent></currentParametersComponent>
-        </template>
+      <Suspense v-else-if="currentParametersComponent">
+        <div class="sidebar-geometry-parameters">
+          <component :is="currentParametersComponent" />
+        </div>
         <template #fallback>
-          <p> Loading... </p>
+          <p>Loading...</p>
         </template>
       </Suspense>
     </div>

@@ -45,6 +45,7 @@ const appSignals: SignalRegister = {
 	// 雪效果配置参数变更
 	sceneSnowSettingsChanged: new Signal(),
 	sceneLightningSettingsChanged: new Signal(),
+	sceneTerrainSettingsChanged: new Signal(),
 	sceneGraphChanged: new Signal(),
 	sceneRendered: new Signal(),
 	sceneResize: new Signal(),

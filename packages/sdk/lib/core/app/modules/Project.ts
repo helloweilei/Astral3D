@@ -9,6 +9,14 @@ import { getNestedProperty } from "@/utils";
 import type { App } from "../App";
 import { useRemoveSignal, useAddSignal, useDispatchSignal } from "@/hooks";
 import { FPS_OPTIONS } from "@/constant";
+import { estimateZoomFromBounds } from "@/utils/geo/GeoUtils";
+
+const DEFAULT_IMAGERY_BOUNDS: IAppProject.Terrain["imagery"]["bounds"] = {
+	west: 116.38,
+	south: 39.9,
+	east: 116.4,
+	north: 39.92,
+};
 
 export const defaultProjectInfo = (): IAppProject.Info => ({
 	// 项目运行是否启用xr
@@ -159,6 +167,38 @@ export const defaultProjectInfo = (): IAppProject.Info => ({
 			density: 1.0,
 			speed: 1.0,
 			alpha: 0.5,
+		},
+	},
+	// 地形
+	terrain: {
+		enabled: false,
+		hideGrid: true,
+		origin: {
+			longitude: 116.391,
+			latitude: 39.907,
+			height: 0,
+		},
+		imagery: {
+			enabled: true,
+			provider: "osm",
+			url: "https://{switch:a,b,c}.tile-cyclosm.openstreetmap.fr/cyclosm/{zoom}/{x}/{y}.png",
+			token: "",
+			minZoom: 10,
+			maxZoom: 18,
+			opacity: 1,
+			lockLevel: false,
+			lockedLevel: estimateZoomFromBounds(DEFAULT_IMAGERY_BOUNDS, 10, 18),
+			tilePadding: 3,
+			fixedBounds: false,
+			bounds: { ...DEFAULT_IMAGERY_BOUNDS },
+		},
+		tiles3d: {
+			enabled: false,
+			url: "",
+			maximumScreenSpaceError: 16,
+			offset: { x: 0, y: 0, z: 0 },
+			rotation: { x: 0, y: 0, z: 0 },
+			scale: 1,
 		},
 	},
 	// 场景信息
@@ -333,6 +373,8 @@ class Project {
 					useDispatchSignal("sceneLightningSettingsChanged");
 					break;
 			}
+		} else if (key.startsWith("terrain")) {
+			useDispatchSignal("sceneTerrainSettingsChanged");
 		}
 	}
 

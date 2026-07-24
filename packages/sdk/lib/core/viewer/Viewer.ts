@@ -7,7 +7,7 @@ import { TransformControls } from "three/examples/jsm/controls/TransformControls
 import App from "../app/App";
 import { ViewerOptions } from "./ViewerOptions";
 import { PluginManager } from "@/core/plugin/plugin";
-import { Helper, CameraManage, Effect, Weather, Signals, ParticleSystem, Drag } from "./modules";
+import { Helper, CameraManage, Effect, Weather, Terrain, Signals, ParticleSystem, Drag } from "./modules";
 import { ShaderMaterialManager } from "@/core/shaderMaterial/ShaderMaterialManager";
 import { deepAssign, deepEqual, getMousePosition, isEmptyObject, isNil, createDivContainer } from "@/utils";
 import { useDispatchSignal } from "@/hooks";
@@ -89,6 +89,7 @@ export interface ViewerModules {
 	transformControls?: TransformControls;
 	effect: Effect;
 	weather: Weather;
+	terrain: Terrain;
 	registerSignal: Signals;
 	shaderMaterialManager: ShaderMaterialManager;
 	particleSystem: ParticleSystem;
@@ -159,7 +160,7 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 	public container: HTMLElement;
 	public options: IViewerSetting;
 	public renderer: THREE.WebGLRenderer;
-	public camera: THREE.PerspectiveCamera;
+	public camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
 	public scene: THREE.Scene;
 	public sceneHelpers: THREE.Scene;
 	public grid: THREE.Group | undefined;
@@ -195,6 +196,7 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 		this.renderer = this.createEngine();
 
 		this.modules = this.initModules();
+		this.modules.terrain.init();
 
 		this.package = new Package(this);
 
@@ -615,15 +617,7 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 	 */
 	initModules() {
 		const controls = new CameraControls(this.camera);
-		controls.setLookAt(
-			this.camera.position.x,
-			this.camera.position.y,
-			this.camera.position.z,
-			0,
-			0,
-			0,
-			false
-		);
+		controls.setLookAt(this.camera.position.x, this.camera.position.y, this.camera.position.z, 0, 0, 0, false);
 		controls.addEventListener("update", () => {
 			useDispatchSignal("cameraChanged", this.camera, controls);
 		});
@@ -636,6 +630,7 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 			controls,
 			effect: new Effect(this),
 			weather: new Weather(this),
+			terrain: new Terrain(this),
 			// 注册signal
 			registerSignal: new Signals(this),
 			shaderMaterialManager: new ShaderMaterialManager(),
@@ -1154,6 +1149,10 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 		}
 
 		if (this.modules.weather.update(timeStamp)) {
+			needRender = true;
+		}
+
+		if (this.modules.terrain.update(timeStamp)) {
 			needRender = true;
 		}
 

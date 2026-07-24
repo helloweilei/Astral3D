@@ -12,7 +12,7 @@
     {{ t("setting.Setting") }}
   </n-tooltip>
 
-  <n-modal v-model:show="show" display-directive="show" :z-index="zIndex" class="w-100 h-40vh">
+  <n-modal v-model:show="show" display-directive="show" class="w-100 h-40vh">
     <n-card size="small">
       <SettingTabs />
     </n-card>
@@ -20,16 +20,11 @@
 </template>
 
 <script setup lang="ts">
-import {ref,onMounted} from "vue";
-import {Settings} from "@vicons/carbon";
-import {t} from "@/language";
+import { ref } from "vue";
+import { Settings } from "@vicons/carbon";
+import { t } from "@/language";
 
-const show = ref(true);
-const zIndex = ref<number | undefined>(-1);
-onMounted(() => {
-  show.value = false;
-  zIndex.value = undefined;
-});
+const show = ref(false);
 </script>
 
 <style scoped lang="less">

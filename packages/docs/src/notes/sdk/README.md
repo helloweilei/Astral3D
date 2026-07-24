@@ -90,7 +90,7 @@ App.focus(box)
 | --- | --- |
 | 核心入口 | `Viewer`、`App`、`Preview`、`Loader`、`version` |
 | App 模块 | `Config`、`CSM`、`History`、`Project`、`defaultProjectInfo`、`Resource`、`Selector`、`Storage` |
-| Viewer 模块 | `Helper`、`CameraManage`、`Effect`、`LUTEffectMap`、`Weather`、`Signals`、`ParticleSystem`、`Drag` |
+| Viewer 模块 | `Helper`、`CameraManage`、`Effect`、`LUTEffectMap`、`Weather`、`Terrain`、`Signals`、`ParticleSystem`、`Drag` |
 | 常量 | `TYPED_ARRAYS`、`BASE64_TYPES`、`TEXTURE_MAPPING`、`TEXTURE_WRAPPING`、`TEXTURE_FILTER`、`POSITION`、`FPS_OPTIONS`、`ROAMING_CHARACTERS` |
 | Utils 命名空间 | `Utils.deepAssign`、`Utils.deepEqual`、`Utils.debounce`、`Utils.throttle`、`Utils.getNestedProperty`、`Utils.escapeRegExp`、`Utils.getOsTheme`、`Utils.remToPxNumber`、`Utils.downloadBlob`、`Utils.saveArrayBuffer`、`Utils.saveString`、`Utils.IS_MAC`、`Utils.isNil`、`Utils.isEmptyObject`、`Utils.createDivContainer`、`Utils.parseMaterialZip`、`Utils.Stats`、`Utils.focusObject`、`Utils.focusObjectByDistance`、`Utils.getParentPath`、`Utils.getMousePosition`、`Utils.getMeshByInstancedMesh`、`Utils.isGroup`、`Utils.isParticleObject`、`Utils.isBillboardObject`、`Utils.isHtmlPanelObject`、`Utils.getAnimations`、`Utils.getAnimationClips`、`Utils.fetchController`、`Utils.injectWasm`、`Utils.ASTRAL_ZIP_READY_TIMEOUT`、`Utils.ASTRAL_ZIP_READY_INTERVAL`、`Utils.ASTRAL_ZIP_MAX_WORKERS`、`Utils.getAstralZipConstructor`、`Utils.waitAstralZipConstructor`、`Utils.getAstralZipWorkers`、`Utils.getAstralZipFile`、`Utils.readAstralZipText`、`Utils.readAstralZipArrayBuffer`、`Utils.readAstralZipBlob`、`Utils.SignalsRegister`、`Utils.SignalsRegisterFn`、`Utils.logger`、`Utils.ILog` |
 | Hooks 命名空间 | `Hooks.useSignal`、`Hooks.useAddSignal`、`Hooks.useAddOnceSignal`、`Hooks.useDispatchSignal`、`Hooks.useRemoveSignal`、`Hooks.useSetSignalActive` |

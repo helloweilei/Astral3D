@@ -79,6 +79,43 @@ declare namespace IAppProject {
 		};
 	}
 
+	interface Terrain {
+		enabled: boolean;
+		hideGrid: boolean;
+		origin: {
+			longitude: number;
+			latitude: number;
+			height: number;
+		};
+		imagery: {
+			enabled: boolean;
+			provider: "custom" | "osm" | "tianditu_vec" | "tianditu_img";
+			url: string;
+			token: string;
+			minZoom: number;
+			maxZoom: number;
+			opacity: number;
+			lockLevel: boolean;
+			lockedLevel: number;
+			tilePadding: number;
+			fixedBounds: boolean;
+			bounds: {
+				west: number;
+				south: number;
+				east: number;
+				north: number;
+			};
+		};
+		tiles3d: {
+			enabled: boolean;
+			url: string;
+			maximumScreenSpaceError: number;
+			offset: { x: number; y: number; z: number };
+			rotation: { x: number; y: number; z: number };
+			scale: number;
+		};
+	}
+
 	interface Weather {
 		fog: {
 			enabled: boolean;
@@ -158,6 +195,7 @@ declare namespace IAppProject {
 		csm: CSM;
 		effect: Effect;
 		weather: Weather;
+		terrain: Terrain;
 	}
 
 	interface Info extends Config {

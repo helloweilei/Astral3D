@@ -45,7 +45,7 @@ export class CameraManage {
 		});
 	}
 
-	private switchView(rotate: () => Promise<void>): Promise<THREE.PerspectiveCamera> {
+	private switchView(rotate: () => Promise<void>): Promise<THREE.PerspectiveCamera | THREE.OrthographicCamera> {
 		return rotate()
 			.then(() => {
 				this.resetInteract();

@@ -367,6 +367,8 @@ export class Package {
 				effect: App.project.getKey("effect"),
 				// 项目天气配置
 				weather: App.project.getKey("weather"),
+				// 项目地形配置
+				terrain: App.project.getKey("terrain"),
 			}),
 		});
 
@@ -751,6 +753,21 @@ export class Package {
 							});
 							useDispatchSignal("sceneLightningSettingsChanged");
 						}
+					}
+
+					if (configJson.terrain) {
+						const projectTerrain = App.project.getKey("terrain");
+						Object.keys(configJson.terrain).forEach(key => {
+							const value = configJson.terrain[key];
+							if (value && typeof value === "object" && !Array.isArray(value)) {
+								Object.keys(value).forEach(subKey => {
+									projectTerrain[key][subKey] = value[subKey];
+								});
+							} else {
+								projectTerrain[key] = value;
+							}
+						});
+						useDispatchSignal("sceneTerrainSettingsChanged");
 					}
 				}
 

@@ -34,7 +34,7 @@ export class App {
     /**
      * 场景默认相机
      */
-    public camera: THREE.PerspectiveCamera = _DEFAULT_CAMERA.clone();
+    public camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = _DEFAULT_CAMERA.clone();
 
     /**
      * 当前视口正在使用的相机

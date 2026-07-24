@@ -55,6 +55,12 @@ const objectData = reactive({
     renderOrder: 0,
     userData: "{}"
 })
+const geoAnchorData = reactive({
+    enabled: false,
+    longitude: 0,
+    latitude: 0,
+    height: 0,
+})
 const transformRowsVisible = reactive({
     rotation: true,
     scale: true
@@ -194,6 +200,14 @@ const updateUI = Utils.throttle(function(object) {
         objectData.userData = JSON.stringify(object.userData, null, '  ');
     } catch (error) {
         console.log(error);
+    }
+
+    const anchor = object.userData?.geoAnchor;
+    geoAnchorData.enabled = !!anchor;
+    if (anchor) {
+        geoAnchorData.longitude = anchor.longitude ?? 0;
+        geoAnchorData.latitude = anchor.latitude ?? 0;
+        geoAnchorData.height = anchor.height ?? 0;
     }
 
     updateTransformRows(object);
@@ -393,6 +407,38 @@ const handleUserDataClick = () => {
     //   userDataStatus.value = 'error';
     // }
     userDataEditorShow.value = true;
+}
+
+function updateGeoAnchor() {
+    const object = App.selected as THREE.Object3D | null;
+    if (!object) return;
+
+    const userData = { ...object.userData };
+    if (geoAnchorData.enabled) {
+        userData.geoAnchor = {
+            longitude: geoAnchorData.longitude,
+            latitude: geoAnchorData.latitude,
+            height: geoAnchorData.height,
+        };
+        window.viewer.modules.terrain.setObjectGeoAnchor(object, userData.geoAnchor);
+    } else {
+        delete userData.geoAnchor;
+        window.viewer.modules.terrain.setObjectGeoAnchor(object, null);
+    }
+
+    App.execute(new SetValueCommand(object, "userData", userData));
+    objectData.userData = JSON.stringify(userData, null, "  ");
+}
+
+function pickSurfaceHeight() {
+    const object = App.selected as THREE.Object3D | null;
+    if (!object) return;
+
+    const height = window.viewer.modules.terrain.pickSurfaceHeight(object.position.x, object.position.z);
+    if (height === null) return;
+
+    objectData.position.y = Number(height.toFixed(3));
+    update("position");
 }
 </script>
 
@@ -648,6 +694,42 @@ const handleUserDataClick = () => {
                     @change="update('renderOrder')" />
             </div>
         </div>
+        <!-- geo anchor -->
+        <div class="sider-scene-attr-item">
+            <span>{{ t("layout.sider.terrain.Use Geo Anchor") }}</span>
+            <div>
+                <n-checkbox v-model:checked="geoAnchorData.enabled" @update:checked="updateGeoAnchor" />
+            </div>
+        </div>
+        <template v-if="geoAnchorData.enabled">
+            <div class="sider-scene-attr-item">
+                <span>{{ t("layout.sider.terrain.Longitude") }}</span>
+                <div>
+                    <EsInputNumber v-model:value="geoAnchorData.longitude" size="tiny" :show-button="false"
+                        :min="-180" :max="180" :decimal="6" @change="updateGeoAnchor" />
+                </div>
+            </div>
+            <div class="sider-scene-attr-item">
+                <span>{{ t("layout.sider.terrain.Latitude") }}</span>
+                <div>
+                    <EsInputNumber v-model:value="geoAnchorData.latitude" size="tiny" :show-button="false"
+                        :min="-90" :max="90" :decimal="6" @change="updateGeoAnchor" />
+                </div>
+            </div>
+            <div class="sider-scene-attr-item">
+                <span>{{ t("layout.sider.terrain.Height") }}</span>
+                <div>
+                    <EsInputNumber v-model:value="geoAnchorData.height" size="tiny" :show-button="false"
+                        :decimal="2" @change="updateGeoAnchor" />
+                </div>
+            </div>
+            <div class="sider-scene-attr-item">
+                <span>{{ t("layout.sider.terrain.Pick Height") }}</span>
+                <div>
+                    <n-button size="tiny" @click="pickSurfaceHeight">{{ t("layout.sider.terrain.Pick Height") }}</n-button>
+                </div>
+            </div>
+        </template>
         <!-- userdata -->
         <div class="sider-scene-attr-item">
             <span>{{ t("layout.sider.object.userdata") }}</span>

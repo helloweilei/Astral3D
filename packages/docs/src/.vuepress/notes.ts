@@ -222,6 +222,8 @@ const sdkNote = defineNoteConfig({
                 'CameraManage',
                 'Effect',
                 'Weather',
+                'Terrain',
+                '影像瓦片加载问题修复',
                 'Signals',
                 'ParticleSystem',
                 'Drag',
