@@ -6,9 +6,12 @@ declare interface IViewerEdit {
 
 declare interface IViewerGrid {
     enabled:boolean;
-    color: number | string;
+    color: string;
+    mainColor: string;
     row:number;
     column:number;
+    subGridDistance: number;
+    showAxes: boolean;
 }
 
 declare interface IViewerControl {

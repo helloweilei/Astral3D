@@ -1,125 +1,112 @@
-import * as THREE from 'three';
-import CameraControls from 'camera-controls';
-import {Timer} from 'three/examples/jsm/misc/Timer.js';
-import {CSS2DRenderer} from "three/examples/jsm/renderers/CSS2DRenderer";
-import {CSS3DRenderer} from "three/examples/jsm/renderers/CSS3DRenderer.js";
-import {TransformControls} from "three/examples/jsm/controls/TransformControls.js";
+import * as THREE from "three";
+import CameraControls from "camera-controls";
+import { Timer } from "three/examples/jsm/misc/Timer.js";
+import { CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer";
+import { CSS3DRenderer } from "three/examples/jsm/renderers/CSS3DRenderer.js";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import App from "../app/App";
-import {ViewerOptions} from "./ViewerOptions";
-import {PluginManager} from "@/core/plugin/plugin";
-import {
-    Helper,
-    CameraManage,
-    Effect,
-    Weather,
-    Signals,
-    ParticleSystem,
-    Drag,
-} from "./modules";
-import {ShaderMaterialManager} from "@/core/shaderMaterial/ShaderMaterialManager";
-import {deepAssign, deepEqual, getMousePosition, isEmptyObject, isNil, createDivContainer} from "@/utils";
-import {useDispatchSignal} from "@/hooks";
-import {
-    AddObjectCommand,
-    SetPositionCommand,
-    SetRotationCommand,
-    SetScaleCommand
-} from "@/core/commands/Commands";
-import {Emitter} from '@/core/libs/three-nebula';
+import { ViewerOptions } from "./ViewerOptions";
+import { PluginManager } from "@/core/plugin/plugin";
+import { Helper, CameraManage, Effect, Weather, Signals, ParticleSystem, Drag } from "./modules";
+import { ShaderMaterialManager } from "@/core/shaderMaterial/ShaderMaterialManager";
+import { deepAssign, deepEqual, getMousePosition, isEmptyObject, isNil, createDivContainer } from "@/utils";
+import { useDispatchSignal } from "@/hooks";
+import { AddObjectCommand, SetPositionCommand, SetRotationCommand, SetScaleCommand } from "@/core/commands/Commands";
+import { Emitter } from "@/core/libs/three-nebula";
 import ParticleEmitter from "@/core/objects/ParticleEmitter.ts";
-import {ViewerPathTracer} from "@/core/viewer/ViewerPathTracer.ts";
-import {Helper as ScriptHelper} from "../script";
+import { ViewerPathTracer } from "@/core/viewer/ViewerPathTracer.ts";
+import { Helper as ScriptHelper } from "../script";
 import { Package } from "@/core/loader/Package.ts";
 import { injectWasm } from "@/utils/wasm/inject.ts";
 
 export interface ViewerEventMap {
-    // 场景加载完成时执行，仅执行一次
-    loaded: {};
+	// 场景加载完成时执行，仅执行一次
+	loaded: {};
 
-    // 场景当前动画帧循环开始之前触发，每一帧执行一次
-    beforeAnimation: { delta: number };
+	// 场景当前动画帧循环开始之前触发，每一帧执行一次
+	beforeAnimation: { delta: number };
 
-    // 场景当前动画帧循环完成之后立即触发，每一帧执行一次
-    afterAnimation: { delta: number, toBeRender: (_need: boolean) => void };
+	// 场景当前动画帧循环完成之后立即触发，每一帧执行一次
+	afterAnimation: { delta: number; toBeRender: (_need: boolean) => void };
 
-    // 场景当前动画帧循环完成之后渲染之前触发，每一次渲染执行一次
-    beforeRender: { delta: number };
+	// 场景当前动画帧循环完成之后渲染之前触发，每一次渲染执行一次
+	beforeRender: { delta: number };
 
-    // 场景当前帧渲染完成之后触发，每一次渲染执行一次
-    afterRender: { delta: number };
+	// 场景当前帧渲染完成之后触发，每一次渲染执行一次
+	afterRender: { delta: number };
 
-    // 场景销毁前调用，仅执行一次
-    beforeDestroy: {};
+	// 场景销毁前调用，仅执行一次
+	beforeDestroy: {};
 
-    // 场景销毁后调用，仅执行一次
-    afterDestroy: {};
+	// 场景销毁后调用，仅执行一次
+	afterDestroy: {};
 
-    // 模型单击事件
-    onPick: { intersect: THREE.Intersection, object: THREE.Object3D };
+	// 模型单击事件
+	onPick: { intersect: THREE.Intersection; object: THREE.Object3D };
 
-    // 模型双击事件
-    onDoubleClick: { intersect: THREE.Intersection, object: THREE.Object3D };
+	// 模型双击事件
+	onDoubleClick: { intersect: THREE.Intersection; object: THREE.Object3D };
 
-    // 键盘按下事件(全局)
-    onKeyDown: { event: KeyboardEvent };
+	// 键盘按下事件(全局)
+	onKeyDown: { event: KeyboardEvent };
 
-    // 键盘抬起事件(全局)
-    onKeyUp: { event: KeyboardEvent };
+	// 键盘抬起事件(全局)
+	onKeyUp: { event: KeyboardEvent };
 
-    //指针按下事件(全局)
-    onPointerDown: { event: PointerEvent };
+	//指针按下事件(全局)
+	onPointerDown: { event: PointerEvent };
 
-    //指针抬起事件(全局)
-    onPointerUp: { event: PointerEvent };
+	//指针抬起事件(全局)
+	onPointerUp: { event: PointerEvent };
 
-    //指针移动事件(全局)
-    onPointerMove: { event: PointerEvent };
+	//指针移动事件(全局)
+	onPointerMove: { event: PointerEvent };
 
-    //触屏按下事件(全局)
-    onTouchStart: { event: TouchEvent };
+	//触屏按下事件(全局)
+	onTouchStart: { event: TouchEvent };
 
-    //触屏释放事件(全局)
-    onTouchEnd: { event: TouchEvent };
+	//触屏释放事件(全局)
+	onTouchEnd: { event: TouchEvent };
 
-    // 场景背景变更
-    onSceneBackgroundChange: {
-        backgroundType: '' | 'Color' | 'Texture' | 'Equirectangular',
-        background: null | THREE.Color | THREE.Texture
-    }
+	// 场景背景变更
+	onSceneBackgroundChange: {
+		backgroundType: "" | "Color" | "Texture" | "Equirectangular";
+		background: null | THREE.Color | THREE.Texture;
+	};
 
-    // 场景环境变更
-    onSceneEnvironmentChange: {
-        environmentType: '' | 'Background' | 'Equirectangular' | 'ModelViewer',
-        environment: null | THREE.Texture
-    }
+	// 场景环境变更
+	onSceneEnvironmentChange: {
+		environmentType: "" | "Background" | "Equirectangular" | "ModelViewer";
+		environment: null | THREE.Texture;
+	};
 }
 
 export interface ViewerModules {
-    plugin: PluginManager,
-    viewHelper: Helper,
-    cameraManage: CameraManage,
-    controls: CameraControls,
-    transformControls?: TransformControls,
-    effect: Effect,
-    weather: Weather,
-    registerSignal: Signals,
-    shaderMaterialManager: ShaderMaterialManager,
-    particleSystem: ParticleSystem,
-    dragControl: Drag,
+	plugin: PluginManager;
+	viewHelper: Helper;
+	cameraManage: CameraManage;
+	controls: CameraControls;
+	transformControls?: TransformControls;
+	effect: Effect;
+	weather: Weather;
+	registerSignal: Signals;
+	shaderMaterialManager: ShaderMaterialManager;
+	particleSystem: ParticleSystem;
+	dragControl: Drag;
 }
 
 CameraControls.install({
-    THREE: {
-        Vector2: THREE.Vector2,
-        Vector3: THREE.Vector3,
-        Vector4: THREE.Vector4,
-        Quaternion: THREE.Quaternion,
-        Matrix4: THREE.Matrix4,
-        Spherical: THREE.Spherical,
-        Box3: THREE.Box3,
-        Sphere: THREE.Sphere,
-        Raycaster: THREE.Raycaster,
-    }
+	THREE: {
+		Vector2: THREE.Vector2,
+		Vector3: THREE.Vector3,
+		Vector4: THREE.Vector4,
+		Quaternion: THREE.Quaternion,
+		Matrix4: THREE.Matrix4,
+		Spherical: THREE.Spherical,
+		Box3: THREE.Box3,
+		Sphere: THREE.Sphere,
+		Raycaster: THREE.Raycaster,
+	},
 });
 
 const onDownPosition = new THREE.Vector2();
@@ -131,42 +118,42 @@ let timeStamp = 0;
 
 // 事件绑定
 const Fn: any = {
-    pointerdown: null,
-    pointerup: null,
-    pointermove: null,
-    keydown: null,
-    keyup: null,
-    touchstart: null,
-    dblclick: null,
-}
+	pointerdown: null,
+	pointerup: null,
+	pointermove: null,
+	keydown: null,
+	keyup: null,
+	touchstart: null,
+	dblclick: null,
+};
 
 // 脚本管理数据结构
 type EventHandlers = {
-    [eventName: string]: {
-        [uuid: string]: Function[];
-    };
+	[eventName: string]: {
+		[uuid: string]: Function[];
+	};
 };
 // 脚本中可写的所有事件
 let events: EventHandlers = {
-    loaded: {},
-    beforeAnimation: {},
-    afterAnimation: {},
-    beforeRender: {},
-    afterRender: {},
-    beforeDestroy: {},
-    afterDestroy: {},
-    onPick: {},
-    onDoubleClick: {},
-    onKeyDown: {},
-    onKeyUp: {},
-    onPointerDown: {},
-    onPointerUp: {},
-    onPointerMove: {},
-    onTouchStart: {},
-    onTouchEnd: {},
+	loaded: {},
+	beforeAnimation: {},
+	afterAnimation: {},
+	beforeRender: {},
+	afterRender: {},
+	beforeDestroy: {},
+	afterDestroy: {},
+	onPick: {},
+	onDoubleClick: {},
+	onKeyDown: {},
+	onKeyUp: {},
+	onPointerDown: {},
+	onPointerUp: {},
+	onPointerMove: {},
+	onTouchStart: {},
+	onTouchEnd: {},
 };
 // UUID 到事件的映射
-const uuidEventMap: Map<string, Map<string, { name: string, fn: Function }[]>> = new Map();
+const uuidEventMap: Map<string, Map<string, { name: string; fn: Function }[]>> = new Map();
 
 export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 	public container: HTMLElement;
@@ -176,6 +163,7 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 	public scene: THREE.Scene;
 	public sceneHelpers: THREE.Scene;
 	public grid: THREE.Group | undefined;
+	public axes: THREE.Group | undefined;
 	public box: THREE.Box3 = new THREE.Box3();
 	public selectionBox: THREE.Box3Helper;
 	public raycaster: THREE.Raycaster;
@@ -251,7 +239,7 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 		 * 注入engine的wasm,包含以下能力：
 		 * 1. 打包压缩及对应速度优化
 		 */
-		injectWasm({ wasmUrl: new URL(import.meta.env.BASE_URL + 'static/wasm/Astral3DEngine.wasm', import.meta.url).href }).then(() => {})
+		injectWasm({ wasmUrl: new URL(import.meta.env.BASE_URL + "static/wasm/Astral3DEngine.wasm", import.meta.url).href }).then(() => {});
 
 		useDispatchSignal("viewerInitCompleted", this);
 	}
@@ -469,20 +457,125 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 
 		if (this.grid.children.length > 0) {
 			this.grid.children.forEach((child: THREE.Object3D) => {
-				child.dispose();
+				const mesh = child as THREE.Mesh;
+				if (mesh.material) {
+					(mesh.material as THREE.Material).dispose();
+				}
 			});
 			this.grid.children = [];
 		}
 
-		const grid = new THREE.GridHelper(
-			this.options.grid.row,
-			this.options.grid.column,
-			parseInt(App.config.getKey("mainColor").slice(1), 16),
-			this.options.grid.color
-		);
-		this.grid.add(grid);
+		if (!this.options.grid.enabled) {
+			this.grid.visible = false;
+			return;
+		}
 
+		this.grid.visible = true;
+
+		const parseColorWithAlpha = (hexString: string): { color: THREE.Color; alpha: number } => {
+			const hex = hexString.replace("#", "");
+			let colorHex = hex;
+			let alpha = 1;
+
+			if (hex.length === 8) {
+				colorHex = hex.substring(0, 6);
+				alpha = parseInt(hex.substring(6, 8), 16) / 255;
+			} else if (hex.length === 4) {
+				colorHex = hex.substring(0, 3);
+				colorHex = colorHex
+					.split("")
+					.map(c => c + c)
+					.join("");
+				alpha = parseInt(hex.substring(3, 4) + hex.substring(3, 4), 16) / 255;
+			}
+
+			return {
+				color: new THREE.Color(`#${colorHex}`),
+				alpha,
+			};
+		};
+
+		const mainColorResult = parseColorWithAlpha(this.options.grid.mainColor);
+		const subColorResult = parseColorWithAlpha(this.options.grid.color);
+
+		const gridSize = this.options.grid.row;
+		const mainDivisions = this.options.grid.column;
+		const subDivisions = mainDivisions * 5;
+
+		const subGridMaterial = new THREE.LineBasicMaterial({
+			color: subColorResult.color,
+			transparent: true,
+			opacity: subColorResult.alpha,
+		});
+		const subGrid = new THREE.GridHelper(gridSize, subDivisions);
+		subGrid.material = subGridMaterial;
+		this.grid.add(subGrid);
+
+		const mainGridMaterial = new THREE.LineBasicMaterial({
+			color: mainColorResult.color,
+			transparent: true,
+			opacity: mainColorResult.alpha,
+		});
+		const mainGrid = new THREE.GridHelper(gridSize, mainDivisions);
+		mainGrid.material = mainGridMaterial;
+		this.grid.add(mainGrid);
+
+		this.toggleSubGridByCameraDistance();
+		this.updateAxes();
 		this.render();
+	}
+
+	toggleSubGridByCameraDistance() {
+		if (!this.grid || this.grid.children.length < 2) return;
+
+		const subGrid = this.grid.children[0];
+		const mainGrid = this.grid.children[1];
+
+		if (!subGrid || !mainGrid) return;
+
+		if (!this.modules?.controls) return;
+
+		const target = new THREE.Vector3();
+		this.modules.controls.getTarget(target);
+		const distance = this.camera.position.distanceTo(target);
+
+		const subGridDistance = this.options.grid.subGridDistance || 150;
+		subGrid.visible = distance <= subGridDistance;
+		mainGrid.visible = true;
+	}
+
+	updateAxes() {
+		if (this.options.grid.showAxes) {
+			if (!this.axes) {
+				this.axes = new THREE.Group();
+				this.axes.ignore = true;
+
+				const length = 20;
+				const materialX = new THREE.LineBasicMaterial({ color: 0xff0000, depthTest: false, depthWrite: false });
+				const materialY = new THREE.LineBasicMaterial({ color: 0x00ff00, depthTest: false, depthWrite: false });
+				const materialZ = new THREE.LineBasicMaterial({ color: 0x0000ff, depthTest: false, depthWrite: false });
+
+				const geometryX = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(length, 0, 0)]);
+				const geometryY = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, length, 0)]);
+				const geometryZ = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, length)]);
+
+				const lineX = new THREE.Line(geometryX, materialX);
+				const lineY = new THREE.Line(geometryY, materialY);
+				const lineZ = new THREE.Line(geometryZ, materialZ);
+
+				lineX.renderOrder = 1000;
+				lineY.renderOrder = 1000;
+				lineZ.renderOrder = 1000;
+
+				this.axes.add(lineX, lineY, lineZ);
+				this.scene.add(this.axes);
+			}
+			this.axes.visible = true;
+		} else {
+			if (this.axes) {
+				this.axes.visible = false;
+			}
+		}
 	}
 
 	/**

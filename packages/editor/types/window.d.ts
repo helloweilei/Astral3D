@@ -6,7 +6,9 @@ declare interface Window {
 	$modal: import('naive-ui').ModalProviderInst;
 	$message?: import('naive-ui').MessageProviderInst;
 	$notification: import('naive-ui').NotificationProviderInst;
-	viewer: import('@astral3d/engine').Viewer;
+	viewer: import('@astral3d/engine').Viewer & {
+		toggleSubGridByCameraDistance: () => void;
+	};
 	DrawViewer: any;
 	VRButton: any;
     log: import('loglevel').RootLogger;
