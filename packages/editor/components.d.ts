@@ -32,6 +32,7 @@ declare module 'vue' {
     EsPluginDialog: typeof import('./src/components/es/plugin/EsPluginDialog.vue')['default']
     EsPluginList: typeof import('./src/components/es/plugin/EsPluginList.vue')['default']
     EsPopTreeSelect: typeof import('./src/components/es/EsPopTreeSelect.vue')['default']
+    EsSplitter: typeof import('./src/components/es/EsSplitter.vue')['default']
     EsTexture: typeof import('./src/components/es/EsTexture.vue')['default']
     EsTip: typeof import('./src/components/es/EsTip.vue')['default']
     Fullscreen: typeof import('./src/components/header/navigation/Fullscreen.vue')['default']
