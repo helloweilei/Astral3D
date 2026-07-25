@@ -13,11 +13,18 @@ import {
 
 let _terrainSettingsChangedFn: (() => void) | null = null;
 
+/** 启用地形时禁止相机绕到地平面下方（球坐标极角上限） */
+const TERRAIN_MAX_POLAR_ANGLE = Math.PI / 2;
+/** 相机相对地表的最小高度（米） */
+const TERRAIN_MIN_CAMERA_CLEARANCE = 1;
+
 export class Terrain {
 	private viewer: Viewer;
 	private imageryLayer: ImageryLayer | null = null;
 	private tiles3DLayer: Tiles3DLayer | null = null;
 	private gridVisibleBeforeTerrain = true;
+	private savedMaxPolarAngle: number | null = null;
+	private readonly _clampTarget = new THREE.Vector3();
 
 	constructor(viewer: Viewer) {
 		this.viewer = viewer;
@@ -72,6 +79,8 @@ export class Terrain {
 			}
 		}
 
+		this.applyTerrainCameraLimit();
+
 		const origin = this.getOrigin();
 		let imageryJustEnabled = false;
 
@@ -87,6 +96,8 @@ export class Terrain {
 			if (imageryJustEnabled) {
 				this.flyToRegion();
 			}
+			// 配置变更后立即规划瓦片，避免等相机再动才加载
+			this.refreshImageryNow();
 		} else if (this.imageryLayer) {
 			this.viewer.scene.remove(this.imageryLayer.group);
 			this.imageryLayer.dispose();
@@ -125,6 +136,83 @@ export class Terrain {
 				? this.gridVisibleBeforeTerrain
 				: false;
 		}
+
+		this.clearTerrainCameraLimit();
+	}
+
+	/**
+	 * 限制极角，避免环视到地平面下方。
+	 */
+	private applyTerrainCameraLimit() {
+		const controls = this.viewer.modules?.controls;
+		if (!controls) return;
+
+		if (this.savedMaxPolarAngle === null) {
+			this.savedMaxPolarAngle = controls.maxPolarAngle;
+		}
+		controls.maxPolarAngle = TERRAIN_MAX_POLAR_ANGLE;
+		if (controls.polarAngle > TERRAIN_MAX_POLAR_ANGLE) {
+			controls.rotatePolarTo(TERRAIN_MAX_POLAR_ANGLE, false);
+		}
+	}
+
+	private clearTerrainCameraLimit() {
+		const controls = this.viewer.modules?.controls;
+		if (!controls) return;
+
+		if (this.savedMaxPolarAngle !== null) {
+			controls.maxPolarAngle = this.savedMaxPolarAngle;
+			this.savedMaxPolarAngle = null;
+		} else {
+			controls.maxPolarAngle = this.viewer.options.control.maxPolarAngle ?? Math.PI;
+		}
+	}
+
+	/**
+	 * 钳制相机与目标点高度，禁止落到地图平面下方。
+	 */
+	private clampCameraAboveTerrain(): boolean {
+		const controls = this.viewer.modules?.controls;
+		if (!controls) return false;
+
+		// 防止导航模式切换等逻辑把极角上限改回去
+		if (controls.maxPolarAngle > TERRAIN_MAX_POLAR_ANGLE) {
+			controls.maxPolarAngle = TERRAIN_MAX_POLAR_ANGLE;
+		}
+
+		const camera = this.viewer.camera;
+		controls.getTarget(this._clampTarget);
+
+		let nextCamY = camera.position.y;
+		let nextTargetY = this._clampTarget.y;
+		let changed = false;
+
+		if (controls.polarAngle > TERRAIN_MAX_POLAR_ANGLE) {
+			controls.rotatePolarTo(TERRAIN_MAX_POLAR_ANGLE, false);
+			changed = true;
+		}
+
+		if (nextCamY < TERRAIN_MIN_CAMERA_CLEARANCE) {
+			nextCamY = TERRAIN_MIN_CAMERA_CLEARANCE;
+			changed = true;
+		}
+		if (nextTargetY < 0) {
+			nextTargetY = 0;
+			changed = true;
+		}
+
+		if (!changed) return false;
+
+		controls.setLookAt(
+			camera.position.x,
+			nextCamY,
+			camera.position.z,
+			this._clampTarget.x,
+			nextTargetY,
+			this._clampTarget.z,
+			false
+		);
+		return true;
 	}
 
 	updateGeoAnchoredObjects() {
@@ -166,11 +254,21 @@ export class Terrain {
 		return true;
 	}
 
+	private refreshImageryNow() {
+		if (!this.imageryLayer || !this.viewer.modules?.controls) return;
+
+		const origin = this.getOrigin();
+		const target = new THREE.Vector3();
+		this.viewer.modules.controls.getTarget(target);
+		const viewDistance = this.viewer.camera.position.distanceTo(target);
+		this.imageryLayer.update(this.viewer.camera, origin, { viewDistance, target });
+	}
+
 	update(_delta: number): boolean {
 		const config = this.getTerrainConfig();
 		if (!config.enabled) return false;
 
-		let needRender = false;
+		let needRender = this.clampCameraAboveTerrain();
 		const origin = this.getOrigin();
 		const target = new THREE.Vector3();
 		this.viewer.modules.controls.getTarget(target);

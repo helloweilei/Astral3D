@@ -19,11 +19,9 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-
-    "baseUrl": ".",
     "types": [],
     "typeRoots": ["./node_modules/@types/"]
   },
-  "include": ["src"],
+  "include": ["./src"],
   "exclude": []
 }

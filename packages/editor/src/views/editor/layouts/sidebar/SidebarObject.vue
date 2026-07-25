@@ -208,10 +208,28 @@ const updateUI = Utils.throttle(function(object) {
         geoAnchorData.longitude = anchor.longitude ?? 0;
         geoAnchorData.latitude = anchor.latitude ?? 0;
         geoAnchorData.height = anchor.height ?? 0;
+    } else {
+        applyTerrainOriginToGeoAnchor();
     }
 
     updateTransformRows(object);
 },100)
+
+function getTerrainOriginDefaults() {
+    const origin = App.project.getKey("terrain")?.origin;
+    return {
+        longitude: origin?.longitude ?? 0,
+        latitude: origin?.latitude ?? 0,
+        height: origin?.height ?? 0,
+    };
+}
+
+function applyTerrainOriginToGeoAnchor() {
+    const origin = getTerrainOriginDefaults();
+    geoAnchorData.longitude = origin.longitude;
+    geoAnchorData.latitude = origin.latitude;
+    geoAnchorData.height = origin.height;
+}
 
 function updateTransformRows(object) {
     if (object.isLight || (object.isObject3D && object.userData.targetInverse)) {
@@ -415,6 +433,10 @@ function updateGeoAnchor() {
 
     const userData = { ...object.userData };
     if (geoAnchorData.enabled) {
+        // 首次启用时，默认使用地形设置中的原点
+        if (!object.userData?.geoAnchor) {
+            applyTerrainOriginToGeoAnchor();
+        }
         userData.geoAnchor = {
             longitude: geoAnchorData.longitude,
             latitude: geoAnchorData.latitude,
@@ -424,6 +446,7 @@ function updateGeoAnchor() {
     } else {
         delete userData.geoAnchor;
         window.viewer.modules.terrain.setObjectGeoAnchor(object, null);
+        applyTerrainOriginToGeoAnchor();
     }
 
     App.execute(new SetValueCommand(object, "userData", userData));

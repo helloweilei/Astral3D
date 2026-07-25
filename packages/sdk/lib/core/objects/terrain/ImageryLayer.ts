@@ -50,6 +50,13 @@ export interface ImageryUpdateContext {
 	target: THREE.Vector3;
 }
 
+function cloneImageryConfig(config: IAppProject.Terrain["imagery"]): IAppProject.Terrain["imagery"] {
+	return {
+		...config,
+		bounds: { ...config.bounds },
+	};
+}
+
 export class ImageryLayer {
 	public readonly group = new THREE.Group();
 	private tiles = new Map<string, TileRecord>();
@@ -61,9 +68,12 @@ export class ImageryLayer {
 	private loader = new THREE.TextureLoader();
 	private currentZoom = -1;
 	private lastTileRangeKey = "";
+	/** 异步纹理加载完成后标记，供下一帧触发渲染 */
+	private dirty = false;
 
 	constructor(origin: Wgs84Coord, config: IAppProject.Terrain["imagery"]) {
-		this.config = config;
+		// 拷贝配置，避免与 Project 同一引用导致 updateConfig 检测不到变更
+		this.config = cloneImageryConfig(config);
 		this.group.name = "ImageryLayer";
 		this.group.ignore = true;
 		this.group.frustumCulled = false;
@@ -86,17 +96,26 @@ export class ImageryLayer {
 			this.config.minZoom !== config.minZoom ||
 			this.config.maxZoom !== config.maxZoom;
 
-		this.config = config;
+		const opacityChanged = this.config.opacity !== config.opacity;
+
+		this.config = cloneImageryConfig(config);
 		setEnuOrigin(origin);
 		this.originMercator = lonLatToMercatorMeters(origin.longitude, origin.latitude);
 
 		if (needsFullReset || needsTileRefresh) {
 			this.clearTiles();
+			this.dirty = true;
 			return;
+		}
+
+		if (opacityChanged) {
+			this.applyOpacityToTiles();
+			this.dirty = true;
 		}
 
 		this.pendingCreateQueue = [];
 		this.lastTileRangeKey = "";
+		this.dirty = true;
 	}
 
 	update(camera: THREE.Camera, origin: Wgs84Coord, context?: ImageryUpdateContext): boolean {
@@ -112,7 +131,8 @@ export class ImageryLayer {
 		}
 
 		const tileRangeKey = getTileRangeKey(loadBounds, zoom);
-		let needRender = false;
+		let needRender = this.dirty;
+		this.dirty = false;
 
 		if (tileRangeKey !== this.lastTileRangeKey) {
 			this.lastTileRangeKey = tileRangeKey;
@@ -441,14 +461,25 @@ export class ImageryLayer {
 				(material as THREE.MeshBasicMaterial).map = texture;
 				material.needsUpdate = true;
 				mesh.visible = record.zoom === this.currentZoom;
+				this.dirty = true;
 			},
 			undefined,
 			() => {
 				record.loading = false;
 				mesh.visible = record.zoom === this.currentZoom;
 				(material as THREE.MeshBasicMaterial).color.setHex(0x334455);
+				this.dirty = true;
 			}
 		);
+	}
+
+	private applyOpacityToTiles() {
+		for (const record of this.tiles.values()) {
+			const material = record.mesh.material as THREE.MeshBasicMaterial;
+			material.transparent = this.config.opacity < 1;
+			material.opacity = this.config.opacity;
+			material.needsUpdate = true;
+		}
 	}
 
 	private evictInactiveTiles() {

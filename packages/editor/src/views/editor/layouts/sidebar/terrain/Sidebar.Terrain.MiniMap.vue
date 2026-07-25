@@ -1,15 +1,30 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { t } from "@/language";
-import { Utils } from "@astral3d/engine";
 import EsInputNumber from "@/components/es/EsInputNumber.vue";
+import { Information } from '@vicons/carbon';
 
 let terrainConfig = defineModel<IAppProject.Terrain>({ required: true });
 const emit = defineEmits<{ change: [] }>();
 
-const canvasRef = ref<HTMLCanvasElement | null>(null);
+const mapEl = ref<HTMLDivElement | null>(null);
 const currentLevel = ref(-1);
 let levelTimer: ReturnType<typeof setInterval> | null = null;
+
+let map: L.Map | null = null;
+let originMarker: L.Marker | null = null;
+let boundsRect: L.Rectangle | null = null;
+const cornerMarkers: L.Marker[] = [];
+let resizeObserver: ResizeObserver | null = null;
+let initialFitDone = false;
+const fitTimers: ReturnType<typeof setTimeout>[] = [];
+
+/** 同步外部配置时避免回写循环 */
+let syncingFromConfig = false;
+/** 用户正在拖拽时，忽略外部 watch 重绘 */
+let interacting = false;
 
 const disabled = computed(() => !terrainConfig.value.enabled);
 
@@ -26,6 +41,9 @@ const DEFAULT_ORIGIN = {
 	height: 0,
 };
 
+/** 小地图底图：独立 OSM，不依赖场景影像源 */
+const BASE_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+
 function getImageryBounds() {
 	return terrainConfig.value.imagery?.bounds ?? DEFAULT_BOUNDS;
 }
@@ -34,137 +52,299 @@ function getOrigin() {
 	return terrainConfig.value.origin ?? DEFAULT_ORIGIN;
 }
 
-const mapBounds = computed(() => {
-	const bounds = getImageryBounds();
-	const origin = getOrigin();
-	const lonSpan = Math.max(bounds.east - bounds.west, 0.001);
-	const latSpan = Math.max(bounds.north - bounds.south, 0.001);
-	const margin = Math.max(lonSpan, latSpan) * 0.15;
-
+function normalizeBounds(bounds: IAppProject.Terrain["imagery"]["bounds"]) {
+	const west = Math.min(bounds.west, bounds.east);
+	const east = Math.max(bounds.west, bounds.east);
+	const south = Math.min(bounds.south, bounds.north);
+	const north = Math.max(bounds.south, bounds.north);
 	return {
-		west: bounds.west - margin,
-		east: bounds.east + margin,
-		south: bounds.south - margin,
-		north: bounds.north + margin,
-		originLon: origin.longitude,
-		originLat: origin.latitude,
+		west: Number(west.toFixed(6)),
+		east: Number(east.toFixed(6)),
+		south: Number(south.toFixed(6)),
+		north: Number(north.toFixed(6)),
 	};
-});
-
-function lonLatToCanvas(lon: number, lat: number, width: number, height: number) {
-	const b = mapBounds.value;
-	const x = ((lon - b.west) / (b.east - b.west)) * width;
-	const y = ((b.north - lat) / (b.north - b.south)) * height;
-	return { x, y };
 }
 
-function canvasToLonLat(x: number, y: number, width: number, height: number) {
-	const b = mapBounds.value;
-	const lon = b.west + (x / width) * (b.east - b.west);
-	const lat = b.north - (y / height) * (b.north - b.south);
-	return { lon, lat };
+function createOriginIcon() {
+	return L.divIcon({
+		className: "terrain-minimap-origin-icon",
+		html: `<div class="terrain-minimap-origin-icon__inner"></div>`,
+		iconSize: [18, 18],
+		iconAnchor: [9, 9],
+	});
 }
 
-function drawMiniMap() {
-	const canvas = canvasRef.value;
-	if (!canvas) return;
+function createCornerIcon() {
+	return L.divIcon({
+		className: "terrain-minimap-corner-icon",
+		html: `<div class="terrain-minimap-corner-icon__inner"></div>`,
+		iconSize: [10, 10],
+		iconAnchor: [5, 5],
+	});
+}
 
-	const ctx = canvas.getContext("2d");
-	if (!ctx) return;
+function getLeafletBounds(): L.LatLngBounds {
+	const b = getImageryBounds();
+	return L.latLngBounds(
+		[b.south, b.west],
+		[b.north, b.east]
+	);
+}
 
-	const width = canvas.width;
-	const height = canvas.height;
-	const b = mapBounds.value;
-	const bounds = getImageryBounds();
+function emitConfigChange() {
+	emit("change");
+}
+
+function applyOrigin(lon: number, lat: number, recenterBounds = false) {
 	const origin = getOrigin();
-	const imagery = terrainConfig.value.imagery;
+	origin.longitude = Number(lon.toFixed(6));
+	origin.latitude = Number(lat.toFixed(6));
 
-	ctx.fillStyle = "#1a2332";
-	ctx.fillRect(0, 0, width, height);
-
-	const previewZoom = Math.max(
-		8,
-		Math.min(14, Math.round(Math.log2(360 / Math.max(b.east - b.west, 0.001)) - 1))
-	);
-	const minTileX = Math.floor(((b.west + 180) / 360) * Math.pow(2, previewZoom));
-	const maxTileX = Math.floor(((b.east + 180) / 360) * Math.pow(2, previewZoom));
-	const minTileY = Math.floor(
-		((1 - Math.log(Math.tan((b.north * Math.PI) / 180) + 1 / Math.cos((b.north * Math.PI) / 180)) / Math.PI) / 2) *
-		Math.pow(2, previewZoom)
-	);
-	const maxTileY = Math.floor(
-		((1 - Math.log(Math.tan((b.south * Math.PI) / 180) + 1 / Math.cos((b.south * Math.PI) / 180)) / Math.PI) / 2) *
-		Math.pow(2, previewZoom)
-	);
-
-	for (let tx = minTileX; tx <= maxTileX; tx++) {
-		for (let ty = minTileY; ty <= maxTileY; ty++) {
-			const n = Math.pow(2, previewZoom);
-			const west = (tx / n) * 360 - 180;
-			const east = ((tx + 1) / n) * 360 - 180;
-			const northRad = Math.atan(Math.sinh(Math.PI * (1 - (2 * ty) / n)));
-			const southRad = Math.atan(Math.sinh(Math.PI * (1 - (2 * (ty + 1)) / n)));
-			const north = (northRad * 180) / Math.PI;
-			const south = (southRad * 180) / Math.PI;
-
-			const topLeft = lonLatToCanvas(west, north, width, height);
-			const bottomRight = lonLatToCanvas(east, south, width, height);
-			const tileW = bottomRight.x - topLeft.x;
-			const tileH = bottomRight.y - topLeft.y;
-
-			const url = Utils.buildImageryTileUrl(
-				imagery?.provider ?? "osm",
-				previewZoom,
-				tx,
-				ty,
-				{ url: imagery?.url, token: imagery?.token }
-			);
-
-			const img = new Image();
-			img.crossOrigin = "anonymous";
-			img.onload = () => {
-				ctx.drawImage(img, topLeft.x, topLeft.y, tileW, tileH);
-			};
-			img.src = url;
-		}
+	if (recenterBounds) {
+		const bounds = getImageryBounds();
+		const halfLon = Math.max((bounds.east - bounds.west) / 2, 0.0005);
+		const halfLat = Math.max((bounds.north - bounds.south) / 2, 0.0005);
+		Object.assign(
+			bounds,
+			normalizeBounds({
+				west: lon - halfLon,
+				east: lon + halfLon,
+				south: lat - halfLat,
+				north: lat + halfLat,
+			})
+		);
 	}
 
-	const boundsTL = lonLatToCanvas(bounds.west, bounds.north, width, height);
-	const boundsBR = lonLatToCanvas(bounds.east, bounds.south, width, height);
-	ctx.strokeStyle = "#4caf50";
-	ctx.lineWidth = 2;
-	ctx.strokeRect(boundsTL.x, boundsTL.y, boundsBR.x - boundsTL.x, boundsBR.y - boundsTL.y);
-
-	const originPos = lonLatToCanvas(origin.longitude, origin.latitude, width, height);
-	ctx.fillStyle = "#ff4444";
-	ctx.beginPath();
-	ctx.arc(originPos.x, originPos.y, 5, 0, Math.PI * 2);
-	ctx.fill();
-	ctx.strokeStyle = "#ffffff";
-	ctx.lineWidth = 1.5;
-	ctx.beginPath();
-	ctx.moveTo(originPos.x - 8, originPos.y);
-	ctx.lineTo(originPos.x + 8, originPos.y);
-	ctx.moveTo(originPos.x, originPos.y - 8);
-	ctx.lineTo(originPos.x, originPos.y + 8);
-	ctx.stroke();
+	emitConfigChange();
+	syncOverlaysFromConfig(false);
 }
 
-function handleCanvasClick(event: MouseEvent) {
-	if (disabled.value) return;
+function applyBoundsFromCorners() {
+	if (cornerMarkers.length !== 4) return;
 
-	const canvas = canvasRef.value;
-	if (!canvas) return;
+	const lats = cornerMarkers.map(m => m.getLatLng().lat);
+	const lngs = cornerMarkers.map(m => m.getLatLng().lng);
+	const next = normalizeBounds({
+		west: Math.min(...lngs),
+		east: Math.max(...lngs),
+		south: Math.min(...lats),
+		north: Math.max(...lats),
+	});
 
-	const rect = canvas.getBoundingClientRect();
-	const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
-	const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
-	const { lon, lat } = canvasToLonLat(x, y, canvas.width, canvas.height);
+	Object.assign(getImageryBounds(), next);
+	emitConfigChange();
+	syncOverlaysFromConfig(false);
+}
 
-	terrainConfig.value.origin.longitude = Number(lon.toFixed(6));
-	terrainConfig.value.origin.latitude = Number(lat.toFixed(6));
-	emit("change");
-	drawMiniMap();
+function getViewBounds(): L.LatLngBounds {
+	const origin = getOrigin();
+	const viewBounds = getLeafletBounds();
+	viewBounds.extend([origin.latitude, origin.longitude]);
+	// 极小范围时扩大一点，避免 zoom 过高导致看不清
+	if (viewBounds.getNorthEast().distanceTo(viewBounds.getSouthWest()) < 80) {
+		return viewBounds.pad(2);
+	}
+	return viewBounds.pad(0.25);
+}
+
+function fitOriginAndBounds() {
+	if (!map || !mapEl.value) return false;
+	if (mapEl.value.clientWidth < 8 || mapEl.value.clientHeight < 8) return false;
+
+	map.invalidateSize({ animate: false });
+	map.fitBounds(getViewBounds(), {
+		animate: false,
+		maxZoom: 17,
+		padding: [20, 20],
+	});
+	initialFitDone = true;
+	return true;
+}
+
+function scheduleFitView() {
+	const attempt = () => {
+		fitOriginAndBounds();
+	};
+
+	nextTick(() => {
+		requestAnimationFrame(() => {
+			attempt();
+			[50, 150, 320].forEach(delay => {
+				const timer = setTimeout(attempt, delay);
+				fitTimers.push(timer);
+			});
+		});
+	});
+}
+
+function syncOverlaysFromConfig(fitView: boolean) {
+	if (!map) return;
+
+	syncingFromConfig = true;
+	const origin = getOrigin();
+	const bounds = getLeafletBounds();
+
+	if (originMarker) {
+		originMarker.setLatLng([origin.latitude, origin.longitude]);
+	}
+
+	if (boundsRect) {
+		boundsRect.setBounds(bounds);
+	}
+
+	const corners: L.LatLngExpression[] = [
+		[bounds.getNorth(), bounds.getWest()],
+		[bounds.getNorth(), bounds.getEast()],
+		[bounds.getSouth(), bounds.getEast()],
+		[bounds.getSouth(), bounds.getWest()],
+	];
+
+	corners.forEach((latlng, index) => {
+		cornerMarkers[index]?.setLatLng(latlng);
+	});
+
+	if (fitView) {
+		scheduleFitView();
+	}
+
+	nextTick(() => {
+		syncingFromConfig = false;
+	});
+}
+
+function initMap() {
+	if (!mapEl.value || map) return;
+
+	const origin = getOrigin();
+	map = L.map(mapEl.value, {
+		center: [origin.latitude, origin.longitude],
+		zoom: 14,
+		zoomControl: true,
+		attributionControl: false,
+	});
+
+	L.tileLayer(BASE_TILE_URL, {
+		maxZoom: 19,
+		crossOrigin: true,
+	}).addTo(map);
+
+	boundsRect = L.rectangle(getLeafletBounds(), {
+		color: "#4caf50",
+		weight: 2,
+		fillColor: "#4caf50",
+		fillOpacity: 0.12,
+		interactive: false,
+	}).addTo(map);
+
+	const cornerPositions: L.LatLngExpression[] = [
+		[getImageryBounds().north, getImageryBounds().west],
+		[getImageryBounds().north, getImageryBounds().east],
+		[getImageryBounds().south, getImageryBounds().east],
+		[getImageryBounds().south, getImageryBounds().west],
+	];
+
+	cornerPositions.forEach((latlng, index) => {
+		const marker = L.marker(latlng, {
+			draggable: !disabled.value,
+			icon: createCornerIcon(),
+			zIndexOffset: 500,
+		}).addTo(map!);
+
+		marker.on("dragstart", () => {
+			interacting = true;
+		});
+		marker.on("drag", () => {
+			if (!boundsRect || cornerMarkers.length !== 4) return;
+			const lats = cornerMarkers.map(m => m.getLatLng().lat);
+			const lngs = cornerMarkers.map(m => m.getLatLng().lng);
+			boundsRect.setBounds(
+				L.latLngBounds(
+					[Math.min(...lats), Math.min(...lngs)],
+					[Math.max(...lats), Math.max(...lngs)]
+				)
+			);
+		});
+		marker.on("dragend", () => {
+			interacting = false;
+			if (disabled.value || syncingFromConfig) return;
+			applyBoundsFromCorners();
+		});
+
+		cornerMarkers[index] = marker;
+	});
+
+	originMarker = L.marker([origin.latitude, origin.longitude], {
+		draggable: !disabled.value,
+		icon: createOriginIcon(),
+		zIndexOffset: 1000,
+		title: t("layout.sider.terrain.Origin"),
+	}).addTo(map);
+
+	originMarker.on("dragstart", () => {
+		interacting = true;
+	});
+	originMarker.on("dragend", () => {
+		interacting = false;
+		if (disabled.value || syncingFromConfig || !originMarker) return;
+		const { lat, lng } = originMarker.getLatLng();
+		applyOrigin(lng, lat, false);
+	});
+
+	map.on("click", (event: L.LeafletMouseEvent) => {
+		if (disabled.value || syncingFromConfig) return;
+		applyOrigin(event.latlng.lng, event.latlng.lat, true);
+	});
+
+	map.whenReady(() => {
+		scheduleFitView();
+	});
+
+	if (mapEl.value && typeof ResizeObserver !== "undefined") {
+		resizeObserver = new ResizeObserver(() => {
+			if (!map) return;
+			map.invalidateSize({ animate: false });
+			if (!initialFitDone) {
+				fitOriginAndBounds();
+			}
+		});
+		resizeObserver.observe(mapEl.value);
+	}
+
+	syncOverlaysFromConfig(true);
+}
+
+function destroyMap() {
+	fitTimers.forEach(timer => clearTimeout(timer));
+	fitTimers.length = 0;
+	resizeObserver?.disconnect();
+	resizeObserver = null;
+	initialFitDone = false;
+
+	if (map) {
+		map.remove();
+		map = null;
+	}
+	originMarker = null;
+	boundsRect = null;
+	cornerMarkers.length = 0;
+}
+
+function setOverlayInteractive(enabled: boolean) {
+	const dragging = originMarker?.dragging;
+	if (dragging) {
+		enabled ? dragging.enable() : dragging.disable();
+	}
+	cornerMarkers.forEach(marker => {
+		const cornerDragging = marker.dragging;
+		if (!cornerDragging) return;
+		enabled ? cornerDragging.enable() : cornerDragging.disable();
+	});
+}
+
+function fitToMarkers() {
+	syncOverlaysFromConfig(false);
+	initialFitDone = false;
+	scheduleFitView();
 }
 
 function refreshCurrentLevel() {
@@ -175,42 +355,61 @@ function onConfigChange() {
 	if (terrainConfig.value.imagery.lockLevel && currentLevel.value >= 0) {
 		terrainConfig.value.imagery.lockedLevel = currentLevel.value;
 	}
-	emit("change");
-	requestAnimationFrame(() => drawMiniMap());
+	emitConfigChange();
 }
+
+watch(disabled, isDisabled => {
+	setOverlayInteractive(!isDisabled);
+});
 
 watch(
 	() => [
-		terrainConfig.value.imagery?.bounds,
-		terrainConfig.value.imagery?.provider,
+		terrainConfig.value.imagery?.bounds?.west,
+		terrainConfig.value.imagery?.bounds?.east,
+		terrainConfig.value.imagery?.bounds?.south,
+		terrainConfig.value.imagery?.bounds?.north,
 		terrainConfig.value.origin?.longitude,
 		terrainConfig.value.origin?.latitude,
 	],
-	() => drawMiniMap(),
-	{ deep: true }
+	() => {
+		if (interacting || syncingFromConfig) return;
+		syncOverlaysFromConfig(false);
+	}
 );
 
 onMounted(() => {
-	drawMiniMap();
+	initMap();
 	refreshCurrentLevel();
 	levelTimer = setInterval(refreshCurrentLevel, 500);
 });
 
 onBeforeUnmount(() => {
 	if (levelTimer) clearInterval(levelTimer);
+	destroyMap();
 });
 </script>
 
 <template>
-	<div class="terrain-minimap">
+	<div class="terrain-minimap" :class="{ 'is-disabled': disabled }">
 		<div class="sidebar-config-item">
-			<span>{{ t("layout.sider.terrain.Mini Map") }}</span>
-			<div class="text-xs text-gray-400">{{ t("layout.sider.terrain.Click To Set Origin") }}</div>
+			<span>{{ t("layout.sider.terrain.markOrigin") }}</span>
+			<n-tooltip>
+				<template #trigger>
+					<n-icon class="w-auto!">
+						<Information />
+					</n-icon>
+				</template>
+				{{ t('layout.sider.terrain.Mini Map Hint') }}
+			</n-tooltip>
 		</div>
-
-		<canvas ref="canvasRef" class="terrain-minimap__canvas mb-2" width="280" height="180"
-			:class="{ 'is-disabled': disabled }" @click="handleCanvasClick" />
-
+		<div class="relative">
+			<div ref="mapEl" class="terrain-minimap__map" />
+			<div class="terrain-minimap__toolbar absolute right-1 top-1">
+				<n-button size="tiny" quaternary :disabled="disabled" @click="fitToMarkers">
+					{{ t("layout.sider.terrain.Fit Mini Map") }}
+				</n-button>
+			</div>
+		</div>
 		<div class="sidebar-config-item">
 			<span class="w-60%!">{{ t("layout.sider.terrain.Current Level") }}</span>
 			<div>
@@ -251,18 +450,99 @@ onBeforeUnmount(() => {
 .terrain-minimap {
 	margin-bottom: 12px;
 
-	&__canvas {
+	&__hint {
+		text-align: right;
+		line-height: 1.3;
+	}
+
+	&__toolbar {
+		display: flex;
+		justify-content: flex-end;
+		margin-bottom: 4px;
+	}
+
+	&__map {
 		width: 100%;
-		height: 180px;
+		height: 220px;
 		border-radius: 4px;
 		border: 1px solid var(--n-border-color);
+		overflow: hidden;
+		z-index: 0;
 		cursor: crosshair;
-		display: block;
+		margin-bottom: 8px;
 
-		&.is-disabled {
-			opacity: 0.5;
-			cursor: not-allowed;
+		:deep(.leaflet-control-zoom) {
+			border: none;
+			box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 		}
+
+		:deep(.leaflet-bar a) {
+			background: rgba(30, 30, 30, 0.88);
+			color: #ddd;
+			border-bottom-color: rgba(255, 255, 255, 0.08);
+		}
+
+		:deep(.leaflet-bar a:hover) {
+			background: rgba(50, 50, 50, 0.95);
+			color: #fff;
+		}
+	}
+
+	&.is-disabled &__map {
+		opacity: 0.55;
+		pointer-events: none;
+	}
+}
+</style>
+
+<style lang="less">
+.terrain-minimap-origin-icon {
+	background: transparent !important;
+	border: none !important;
+
+	&__inner {
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		background: #ff4444;
+		border: 2px solid #fff;
+		box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+		position: relative;
+
+		&::before,
+		&::after {
+			content: "";
+			position: absolute;
+			background: #fff;
+			left: 50%;
+			top: 50%;
+			transform: translate(-50%, -50%);
+		}
+
+		&::before {
+			width: 10px;
+			height: 2px;
+		}
+
+		&::after {
+			width: 2px;
+			height: 10px;
+		}
+	}
+}
+
+.terrain-minimap-corner-icon {
+	background: transparent !important;
+	border: none !important;
+
+	&__inner {
+		width: 10px;
+		height: 10px;
+		background: #4caf50;
+		border: 2px solid #fff;
+		border-radius: 2px;
+		box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+		cursor: nwse-resize;
 	}
 }
 </style>
