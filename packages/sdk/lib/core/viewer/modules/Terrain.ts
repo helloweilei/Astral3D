@@ -4,12 +4,7 @@ import App from "@/core/app/App";
 import Viewer from "../Viewer";
 import { ImageryLayer } from "@/core/objects/terrain/ImageryLayer";
 import { Tiles3DLayer } from "@/core/objects/terrain/Tiles3DLayer";
-import {
-	enuToWgs84,
-	setEnuOrigin,
-	wgs84ToEnu,
-	type Wgs84Coord,
-} from "@/utils/geo/GeoUtils";
+import { enuToWgs84, getGroundBoundsFromCamera, setEnuOrigin, wgs84ToEnu, type Wgs84Coord } from "@/utils/geo/GeoUtils";
 
 let _terrainSettingsChangedFn: (() => void) | null = null;
 
@@ -132,9 +127,7 @@ export class Terrain {
 		}
 
 		if (this.viewer.grid) {
-			this.viewer.grid.visible = this.viewer.options.grid.enabled
-				? this.gridVisibleBeforeTerrain
-				: false;
+			this.viewer.grid.visible = this.viewer.options.grid.enabled ? this.gridVisibleBeforeTerrain : false;
 		}
 
 		this.clearTerrainCameraLimit();
@@ -187,31 +180,24 @@ export class Terrain {
 		let nextTargetY = this._clampTarget.y;
 		let changed = false;
 
-		if (controls.polarAngle > TERRAIN_MAX_POLAR_ANGLE) {
+		if (controls.polarAngle > TERRAIN_MAX_POLAR_ANGLE + 1e-4) {
 			controls.rotatePolarTo(TERRAIN_MAX_POLAR_ANGLE, false);
 			changed = true;
 		}
 
-		if (nextCamY < TERRAIN_MIN_CAMERA_CLEARANCE) {
+		// 仅在明显穿地时钳制，避免平移时每帧 setLookAt 与控制器打架导致缩放卡顿
+		if (nextCamY < TERRAIN_MIN_CAMERA_CLEARANCE - 1e-3) {
 			nextCamY = TERRAIN_MIN_CAMERA_CLEARANCE;
 			changed = true;
 		}
-		if (nextTargetY < 0) {
+		if (nextTargetY < -1e-3) {
 			nextTargetY = 0;
 			changed = true;
 		}
 
 		if (!changed) return false;
 
-		controls.setLookAt(
-			camera.position.x,
-			nextCamY,
-			camera.position.z,
-			this._clampTarget.x,
-			nextTargetY,
-			this._clampTarget.z,
-			false
-		);
+		controls.setLookAt(camera.position.x, nextCamY, camera.position.z, this._clampTarget.x, nextTargetY, this._clampTarget.z, false);
 		return true;
 	}
 
@@ -280,8 +266,7 @@ export class Terrain {
 				needRender = true;
 			}
 
-			needRender =
-				this.imageryLayer.update(this.viewer.camera, origin, imageryContext) || needRender;
+			needRender = this.imageryLayer.update(this.viewer.camera, origin, imageryContext) || needRender;
 		}
 
 		if (this.tiles3DLayer) {
@@ -317,7 +302,7 @@ export class Terrain {
 		const controls = this.viewer.modules.controls;
 		controls.setLookAt(
 			enu.x + distance * 0.6,
-			distance * 0.5,
+			distance, //distance * 0.5,
 			enu.z + distance * 0.6,
 			enu.x,
 			enu.y,
@@ -326,21 +311,55 @@ export class Terrain {
 		);
 	}
 
+	/**
+	 * 根据当前相机视锥与地平面求交，估算影像加载边界（WGS84）。
+	 * 四个 NDC 角点射线打到 Y=0 地面，再包络为目标点周围的 lon/lat 范围。
+	 */
 	estimateBoundsFromCamera(): IAppProject.Terrain["imagery"]["bounds"] {
 		const target = new THREE.Vector3();
 		this.viewer.modules.controls.getTarget(target);
 		const origin = this.getOrigin();
+		const bounds = getGroundBoundsFromCamera(this.viewer.camera, target, origin);
+
+		if (bounds) {
+			return {
+				west: Number(bounds.west.toFixed(6)),
+				south: Number(bounds.south.toFixed(6)),
+				east: Number(bounds.east.toFixed(6)),
+				north: Number(bounds.north.toFixed(6)),
+			};
+		}
+
+		// 极端情况兜底：以目标点为中心，按视距推算跨度
 		const wgs84 = enuToWgs84({ x: target.x, y: target.y, z: target.z }, origin);
-		const offset = 0.005;
+		const viewDistance = this.viewer.camera.position.distanceTo(target);
+		const span = Math.max(viewDistance, 100) / 111320;
 
 		return {
-			west: wgs84.longitude - offset,
-			south: wgs84.latitude - offset,
-			east: wgs84.longitude + offset,
-			north: wgs84.latitude + offset,
+			west: Number((wgs84.longitude - span).toFixed(6)),
+			south: Number((wgs84.latitude - span).toFixed(6)),
+			east: Number((wgs84.longitude + span).toFixed(6)),
+			north: Number((wgs84.latitude + span).toFixed(6)),
 		};
 	}
 
+	/**
+	 * 在指定 ENU 水平位置拾取地形/影像表面高度（Y）。
+	 *
+	 * 实现方式：从 `(x, 10000, z)` 竖直向下发射射线，依次检测
+	 * 影像瓦片（`ImageryLayer`）与 3D Tiles（`Tiles3DLayer`）的可拾取 mesh，
+	 * 取最近交点的 `point.y` 作为表面高度。
+	 *
+	 * 典型用途：
+	 * - 对象属性面板「拾取高度」：把选中物体放到地表；
+	 * - 地理锚点等需要贴地的场景。
+	 *
+	 * @param x ENU 东向坐标（米）
+	 * @param z ENU 北向取反后的场景 Z（与瓦片铺设坐标系一致）
+	 * @returns
+	 * - `null`：地形未启用，无法拾取；
+	 * - `number`：命中表面时的 Y 高度；未命中任何 mesh 时返回 `0`（视为地平面）
+	 */
 	pickSurfaceHeight(x: number, z: number): number | null {
 		const config = this.getTerrainConfig();
 		if (!config.enabled) return null;
@@ -352,7 +371,7 @@ export class Terrain {
 
 		const targets: THREE.Object3D[] = [];
 		if (this.imageryLayer) {
-			targets.push(...this.imageryLayer.getPickTargets());
+			targets.push(...this.imageryLayer.getPickTargets(x, z));
 		}
 		if (this.tiles3DLayer) {
 			targets.push(...this.tiles3DLayer.getPickTargets());

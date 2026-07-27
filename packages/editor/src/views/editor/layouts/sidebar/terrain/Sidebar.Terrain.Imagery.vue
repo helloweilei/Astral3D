@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { HelpCircleOutline } from "@vicons/ionicons5";
+import { computed, ref } from "vue";
+import { HelpCircleOutline, LayersOutline } from "@vicons/ionicons5";
 import { t } from "@/language";
 import { Utils } from "@astral3d/engine";
 import EsInputNumber from "@/components/es/EsInputNumber.vue";
@@ -10,10 +10,18 @@ const emit = defineEmits<{ change: [] }>();
 
 const disabled = computed(() => !terrainConfig.value.enabled || !terrainConfig.value.imagery.enabled);
 const showUrlField = computed(() => ["osm", "custom"].includes(terrainConfig.value.imagery.provider));
+const isCustomProvider = computed(() => terrainConfig.value.imagery.provider === "custom");
 const urlPlaceholder = computed(() =>
 	terrainConfig.value.imagery.provider === "osm"
 		? Utils.DEFAULT_OSM_TILE_URL
 		: Utils.DEFAULT_CUSTOM_TILE_URL
+);
+
+const presetDialogShow = ref(false);
+const customPresets = Utils.CUSTOM_IMAGERY_PRESETS;
+
+const selectedPresetId = computed(() =>
+	Utils.findCustomImageryPresetId(terrainConfig.value.imagery.url)
 );
 
 const providerOptions = [
@@ -55,6 +63,21 @@ function estimateBoundsFromCamera() {
 	syncLockedLevelToBounds();
 	onChange();
 }
+
+function openPresetDialog() {
+	if (disabled.value) return;
+	presetDialogShow.value = true;
+}
+
+function selectPreset(url: string) {
+	terrainConfig.value.imagery.url = url;
+	presetDialogShow.value = false;
+	onChange();
+}
+
+function presetLabel(nameKey: string) {
+	return t(`layout.sider.terrain.${nameKey}`);
+}
 </script>
 
 <template>
@@ -76,9 +99,18 @@ function estimateBoundsFromCamera() {
 
 	<div class="sidebar-config-item" v-if="showUrlField">
 		<span>{{ t("layout.sider.terrain.URL Template") }}</span>
-		<div class="w-full">
+		<div class="url-field">
 			<n-input v-model:value="terrainConfig.imagery.url" :disabled="disabled" size="tiny"
 				:placeholder="urlPlaceholder" @change="onChange" />
+			<n-button v-if="isCustomProvider" size="tiny" :disabled="disabled"
+				:title="t('layout.sider.terrain.Preset Layers')" @click="openPresetDialog">
+				<template #icon>
+					<n-icon>
+						<LayersOutline />
+					</n-icon>
+				</template>
+				<!-- {{ t("layout.sider.terrain['Select Layer']") }} -->
+			</n-button>
 		</div>
 	</div>
 
@@ -93,11 +125,7 @@ function estimateBoundsFromCamera() {
 	<div class="sidebar-config-item">
 		<span class="inline-flex items-center gap-4px w-60%!">
 			{{ t("layout.sider.terrain.Fixed Bounds") }}
-			<n-icon
-				size="14"
-				class="hint-icon"
-				:title="t('layout.sider.terrain.Fixed Bounds Hint')"
-			>
+			<n-icon size="14" class="hint-icon" :title="t('layout.sider.terrain.Fixed Bounds Hint')">
 				<HelpCircleOutline />
 			</n-icon>
 		</span>
@@ -171,6 +199,17 @@ function estimateBoundsFromCamera() {
 			</n-button>
 		</div>
 	</div>
+
+	<n-modal v-model:show="presetDialogShow" preset="card" :title="t('layout.sider.terrain.Preset Layers')"
+		style="width: 480px" :mask-closable="true">
+		<div class="preset-list">
+			<button v-for="preset in customPresets" :key="preset.id" type="button" class="preset-item"
+				:class="{ 'is-active': selectedPresetId === preset.id }" @click="selectPreset(preset.url)">
+				<div class="preset-item__title">{{ presetLabel(preset.nameKey) }}</div>
+				<div class="preset-item__url">{{ preset.url }}</div>
+			</button>
+		</div>
+	</n-modal>
 </template>
 
 <style scoped lang="less">
@@ -178,5 +217,66 @@ function estimateBoundsFromCamera() {
 	color: var(--n-text-color-3);
 	cursor: help;
 	vertical-align: middle;
+}
+
+.url-field {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	min-width: 0;
+
+	.n-input {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.n-button {
+		flex-shrink: 0;
+	}
+}
+
+.preset-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-height: 420px;
+	overflow-y: auto;
+}
+
+.preset-item {
+	display: block;
+	width: 100%;
+	text-align: left;
+	padding: 10px 12px;
+	border-radius: 6px;
+	border: 1px solid var(--n-border-color);
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+	transition: border-color 0.15s, background-color 0.15s;
+
+	&:hover {
+		border-color: var(--n-color-target);
+		background: var(--n-color-hover, rgba(255, 255, 255, 0.04));
+	}
+
+	&.is-active {
+		border-color: var(--n-color-target);
+		background: rgba(79, 193, 160, 0.12);
+	}
+
+	&__title {
+		font-size: 13px;
+		font-weight: 500;
+		margin-bottom: 4px;
+	}
+
+	&__url {
+		font-size: 11px;
+		line-height: 1.4;
+		color: var(--n-text-color-3);
+		word-break: break-all;
+	}
 }
 </style>

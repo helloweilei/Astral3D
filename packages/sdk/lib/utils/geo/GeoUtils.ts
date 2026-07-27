@@ -1,28 +1,61 @@
 import * as THREE from "three";
 import proj4 from "proj4";
 
+/** WGS84 地理坐标系（经纬度，度） */
 const WGS84 = "EPSG:4326";
+/** Web 墨卡托投影（米），常用于 OSM/XYZ 瓦片 */
 const WEB_MERCATOR = "EPSG:3857";
 
-proj4.defs(WEB_MERCATOR, "+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs");
+proj4.defs(
+	WEB_MERCATOR,
+	"+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs"
+);
 
+/** 度 → 弧度 */
 const DEG2RAD = Math.PI / 180;
+/** 弧度 → 度 */
 const RAD2DEG = 180 / Math.PI;
+/** WGS84 长半轴（米） */
 const WGS84_A = 6378137;
+/** WGS84 第一偏心率平方 e² */
 const WGS84_E2 = 0.00669437999014;
 
+/**
+ * WGS84 地理坐标。
+ * - longitude / latitude：度
+ * - height：相对椭球面高度（米）
+ */
 export interface Wgs84Coord {
 	longitude: number;
 	latitude: number;
 	height: number;
 }
 
+/**
+ * 局部 ENU（East-North-Up）坐标，单位米。
+ * 在本引擎中映射为 Three.js：x=东，y=天，z=北。
+ */
 export interface EnuCoord {
 	x: number;
 	y: number;
 	z: number;
 }
 
+/**
+ * 经纬度地理包围盒（度）。
+ * 约定：west &lt; east，south &lt; north。
+ */
+export interface GeoBounds {
+	west: number;
+	south: number;
+	east: number;
+	north: number;
+}
+
+/**
+ * WGS84 → ECEF（地心地固直角坐标，米）。
+ * 使用椭球公式，含高程对法线方向的影响。
+ */
 function wgs84ToEcef(lon: number, lat: number, height: number): THREE.Vector3 {
 	const lonRad = lon * DEG2RAD;
 	const latRad = lat * DEG2RAD;
@@ -39,6 +72,10 @@ function wgs84ToEcef(lon: number, lat: number, height: number): THREE.Vector3 {
 	);
 }
 
+/**
+ * 构建「ECEF → 以 origin 为原点的 ENU」变换矩阵。
+ * 基向量顺序为 (East, Up, North)，与场景 Y-up 一致。
+ */
 function buildEnuMatrix(origin: Wgs84Coord): THREE.Matrix4 {
 	const lonRad = origin.longitude * DEG2RAD;
 	const latRad = origin.latitude * DEG2RAD;
@@ -59,10 +96,16 @@ function buildEnuMatrix(origin: Wgs84Coord): THREE.Matrix4 {
 	return new THREE.Matrix4().multiplyMatrices(rotation, translation);
 }
 
+/** 缓存的 ECEF→ENU 矩阵 */
 let _enuMatrix: THREE.Matrix4 | null = null;
+/** 缓存的 ENU→ECEF 逆矩阵 */
 let _enuInverse: THREE.Matrix4 | null = null;
+/** 当前缓存对应的原点指纹：`lon,lat,height` */
 let _originKey = "";
 
+/**
+ * 按需重建 ENU 正/逆矩阵；原点未变时直接复用缓存。
+ */
 function ensureEnuMatrices(origin: Wgs84Coord) {
 	const key = `${origin.longitude},${origin.latitude},${origin.height}`;
 	if (_originKey === key && _enuMatrix && _enuInverse) return;
@@ -72,10 +115,21 @@ function ensureEnuMatrices(origin: Wgs84Coord) {
 	_enuInverse = _enuMatrix.clone().invert();
 }
 
+/**
+ * 设置（或刷新）全局 ENU 原点。
+ * 地形模块在原点变更、启用地形时应调用，保证后续 `wgs84ToEnu` / `enuToWgs84` 一致。
+ */
 export function setEnuOrigin(origin: Wgs84Coord) {
 	ensureEnuMatrices(origin);
 }
 
+/**
+ * WGS84 → 局部 ENU。
+ *
+ * @param coord 待转换点
+ * @param origin ENU 原点（通常为地形配置原点）
+ * @returns ENU 米制坐标 `{ x:东, y:天, z:北 }`
+ */
 export function wgs84ToEnu(coord: Wgs84Coord, origin: Wgs84Coord): EnuCoord {
 	ensureEnuMatrices(origin);
 	const ecef = wgs84ToEcef(coord.longitude, coord.latitude, coord.height);
@@ -83,6 +137,13 @@ export function wgs84ToEnu(coord: Wgs84Coord, origin: Wgs84Coord): EnuCoord {
 	return { x: ecef.x, y: ecef.y, z: ecef.z };
 }
 
+/**
+ * 局部 ENU → WGS84。
+ * ECEF→经纬度采用迭代求解纬度，精度对数字孪生尺度足够。
+ *
+ * @param enu ENU 坐标（米）
+ * @param origin ENU 原点
+ */
 export function enuToWgs84(enu: EnuCoord, origin: Wgs84Coord): Wgs84Coord {
 	ensureEnuMatrices(origin);
 	const ecef = new THREE.Vector3(enu.x, enu.y, enu.z);
@@ -115,16 +176,29 @@ export function enuToWgs84(enu: EnuCoord, origin: Wgs84Coord): Wgs84Coord {
 	};
 }
 
+/**
+ * 经纬度 → Web 墨卡托平面坐标（米）。
+ * 用于把瓦片经纬度范围换算为场景地平面尺寸。
+ */
 export function lonLatToMercatorMeters(lon: number, lat: number): { x: number; y: number } {
 	const [x, y] = proj4(WGS84, WEB_MERCATOR, [lon, lat]);
 	return { x, y };
 }
 
+/**
+ * Web 墨卡托平面坐标（米）→ 经纬度。
+ */
 export function mercatorMetersToLonLat(x: number, y: number): { lon: number; lat: number } {
 	const [lon, lat] = proj4(WEB_MERCATOR, WGS84, [x, y]);
 	return { lon, lat };
 }
 
+/**
+ * 经纬度 → XYZ 瓦片索引（Slippy Map / OSM 规范）。
+ * Y 轴自上而下；结果会钳制在 `[0, 2^zoom - 1]`。
+ *
+ * @param zoom 瓦片层级（整数）
+ */
 export function lonLatToTile(lon: number, lat: number, zoom: number): { x: number; y: number } {
 	const n = Math.pow(2, zoom);
 	const x = Math.floor(((lon + 180) / 360) * n);
@@ -133,6 +207,13 @@ export function lonLatToTile(lon: number, lat: number, zoom: number): { x: numbe
 	return { x: Math.max(0, Math.min(n - 1, x)), y: Math.max(0, Math.min(n - 1, y)) };
 }
 
+/**
+ * XYZ 瓦片索引 → 该瓦片覆盖的经纬度 bounds。
+ *
+ * @param x 列号
+ * @param y 行号（自上而下）
+ * @param z zoom 层级
+ */
 export function tileToLonLatBounds(
 	x: number,
 	y: number,
@@ -151,10 +232,21 @@ export function tileToLonLatBounds(
 	};
 }
 
+/**
+ * 赤道处单边瓦片边长（米）≈ `2πR / 2^zoom`。
+ * 用于按视距/范围估算合适 Level。
+ */
 export function getTileSizeMeters(zoom: number): number {
 	return (2 * Math.PI * WGS84_A) / Math.pow(2, zoom);
 }
 
+/**
+ * 根据相机高度（或视距，米）粗估影像 Level。
+ * 使单瓦片边长约等于给定高度对应的地面尺度。
+ *
+ * @param altitude 视距或高度（米）
+ * @param minZoom / maxZoom 合法区间钳制
+ */
 export function estimateZoomFromAltitude(altitude: number, minZoom: number, maxZoom: number): number {
 	const size = Math.max(altitude, 1);
 	let zoom = Math.floor(Math.log2((2 * Math.PI * WGS84_A) / size));
@@ -162,7 +254,13 @@ export function estimateZoomFromAltitude(altitude: number, minZoom: number, maxZ
 }
 
 /**
- * 根据 bounds 地理跨度估算 Level，使完整范围约 2×2 块瓦片覆盖，且不超过 maxTiles。
+ * 根据 bounds 地理跨度估算 Level。
+ *
+ * 目标：完整范围大约由 `targetTilesPerAxis × targetTilesPerAxis` 块瓦片覆盖，
+ * 且总瓦片数不超过 `maxTiles`；若超出则逐级降低 zoom。
+ *
+ * @param options.targetTilesPerAxis 期望每轴瓦片数，默认 2
+ * @param options.maxTiles 总瓦片上限，默认 320
  */
 export function estimateZoomFromBounds(
 	bounds: GeoBounds,
@@ -192,6 +290,16 @@ export function estimateZoomFromBounds(
 	return zoom;
 }
 
+/**
+ * 带滞回的影像 Level 选择，减轻缩放时在相邻 Level 间来回跳变。
+ *
+ * - `currentZoom < 0`：直接返回理想 Level；
+ * - 理想 Level 更高：仅当视距足够近才 +1；
+ * - 理想 Level 更低：仅当视距足够远才 -1。
+ *
+ * @param currentZoom 当前已加载 Level，未知时传 `-1`
+ * @param viewDistance 相机到目标点距离（米）
+ */
 export function resolveImageryZoom(
 	currentZoom: number,
 	viewDistance: number,
@@ -213,6 +321,13 @@ export function resolveImageryZoom(
 	return viewDistance > zoomOutDistance ? Math.max(currentZoom - 1, minZoom) : currentZoom;
 }
 
+/**
+ * 若 bounds 跨度超过上限，则以中心点重新生成不超过 `maxSpanLon/Lat` 的矩形。
+ * 用于视锥求交结果过大时的兜底裁剪。
+ *
+ * @param maxSpanLon 最大经度跨度（度）
+ * @param maxSpanLat 最大纬度跨度（度）
+ */
 export function clampBoundsAroundCenter(
 	bounds: GeoBounds,
 	centerLon: number,
@@ -238,12 +353,21 @@ export function clampBoundsAroundCenter(
 	};
 }
 
+/**
+ * 生成瓦片范围指纹，供 ImageryLayer 判断本帧是否需要重新规划。
+ * 格式：`{zoom}:{minX},{minY},{maxX},{maxY}`
+ */
 export function getTileRangeKey(bounds: GeoBounds, zoom: number): string {
 	const minTile = lonLatToTile(bounds.west, bounds.north, zoom);
 	const maxTile = lonLatToTile(bounds.east, bounds.south, zoom);
 	return `${zoom}:${minTile.x},${minTile.y},${maxTile.x},${maxTile.y}`;
 }
 
+/**
+ * 解析瓦片 key（`zoom/x/y`）。
+ *
+ * @returns 合法时返回索引；格式错误或非有限数时返回 `null`
+ */
 export function parseTileKey(key: string): { zoom: number; x: number; y: number } | null {
 	const parts = key.split("/");
 	if (parts.length !== 3) return null;
@@ -254,6 +378,10 @@ export function parseTileKey(key: string): { zoom: number; x: number; y: number 
 	return { zoom, x, y };
 }
 
+/**
+ * 判断瓦片 `(zoom,x,y)` 是否落在给定地理 bounds 覆盖的瓦片矩形内。
+ * 注意：Y 方向使用「北→南」的 Slippy 索引比较。
+ */
 export function isTileInRange(
 	zoom: number,
 	x: number,
@@ -265,13 +393,9 @@ export function isTileInRange(
 	return x >= minTile.x && x <= maxTile.x && y >= minTile.y && y <= maxTile.y;
 }
 
-export interface GeoBounds {
-	west: number;
-	south: number;
-	east: number;
-	north: number;
-}
-
+/**
+ * 求两个地理 bounds 的并集（外接矩形）。
+ */
 export function mergeBounds(a: GeoBounds, b: GeoBounds): GeoBounds {
 	return {
 		west: Math.min(a.west, b.west),
@@ -281,6 +405,13 @@ export function mergeBounds(a: GeoBounds, b: GeoBounds): GeoBounds {
 	};
 }
 
+/**
+ * 按瓦片数向外扩展 bounds（四边各扩展 `paddingTiles` 块）。
+ * 纬度方向使用近似 `170.1022 / 2^zoom` 度/瓦片（Web 墨卡托可视纬度范围）。
+ *
+ * @param paddingTiles 扩展的瓦片圈数
+ * @param zoom 当前 Level，用于换算每瓦片经纬度跨度
+ */
 export function expandBounds(bounds: GeoBounds, paddingTiles: number, zoom: number): GeoBounds {
 	const n = Math.pow(2, zoom);
 	const lonPerTile = 360 / n;
@@ -295,8 +426,13 @@ export function expandBounds(bounds: GeoBounds, paddingTiles: number, zoom: numb
 }
 
 /**
- * 以目标点为中心的稳定视域范围，不随相机旋转抖动。
- * 半径由视距与 FOV 估算，并保证至少覆盖若干当前 zoom 瓦片。
+ * 以环视目标点为中心的稳定视域范围（不随相机旋转抖动）。
+ *
+ * 半径由视距与透视 FOV 估算，并保证至少覆盖约 2.5 块当前 zoom 瓦片。
+ * 用于影像动态加载，避免仅靠视锥四角时旋转导致范围剧烈变化。
+ *
+ * @param viewDistance 相机到目标点距离（米）
+ * @param zoom 当前影像 Level
  */
 export function getStableViewBounds(
 	camera: THREE.Camera,
@@ -333,6 +469,16 @@ export function getStableViewBounds(
 	};
 }
 
+/**
+ * 根据当前相机视锥与地平面（Y=0）求交，估算地面地理范围。
+ *
+ * 流程：
+ * 1. 对 NDC 四角发射射线，与地平面求交并转为 WGS84；
+ * 2. 并入环视目标点；
+ * 3. 取点集外接矩形，再按视距限制最大跨度，防止仰视时范围爆炸。
+ *
+ * @returns 估算的 `GeoBounds`；实现上始终有兜底值（类型保留 `null` 兼容旧调用）
+ */
 export function getGroundBoundsFromCamera(
 	camera: THREE.Camera,
 	target: THREE.Vector3,
@@ -395,6 +541,10 @@ export function getGroundBoundsFromCamera(
 	);
 }
 
+/**
+ * 获取 ECEF→ENU 变换矩阵的拷贝（以给定原点）。
+ * 外部修改返回值不会影响内部缓存。
+ */
 export function getEnuMatrix(origin: Wgs84Coord): THREE.Matrix4 {
 	ensureEnuMatrices(origin);
 	return _enuMatrix!.clone();

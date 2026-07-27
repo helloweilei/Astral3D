@@ -19,12 +19,15 @@ let boundsRect: L.Rectangle | null = null;
 const cornerMarkers: L.Marker[] = [];
 let resizeObserver: ResizeObserver | null = null;
 let initialFitDone = false;
+let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 const fitTimers: ReturnType<typeof setTimeout>[] = [];
 
 /** 同步外部配置时避免回写循环 */
 let syncingFromConfig = false;
-/** 用户正在拖拽时，忽略外部 watch 重绘 */
+/** 用户正在拖拽/平移/缩放时，忽略外部 watch 重绘 */
 let interacting = false;
+/** 地图内操作触发的配置变更，不再强制 fitBounds，避免与用户浏览冲突 */
+let suppressAutoFit = false;
 
 const disabled = computed(() => !terrainConfig.value.enabled);
 
@@ -95,45 +98,57 @@ function emitConfigChange() {
 	emit("change");
 }
 
+function withMapDrivenUpdate(fn: () => void) {
+	suppressAutoFit = true;
+	fn();
+	nextTick(() => {
+		suppressAutoFit = false;
+	});
+}
+
 function applyOrigin(lon: number, lat: number, recenterBounds = false) {
-	const origin = getOrigin();
-	origin.longitude = Number(lon.toFixed(6));
-	origin.latitude = Number(lat.toFixed(6));
+	withMapDrivenUpdate(() => {
+		const origin = getOrigin();
+		origin.longitude = Number(lon.toFixed(6));
+		origin.latitude = Number(lat.toFixed(6));
 
-	if (recenterBounds) {
-		const bounds = getImageryBounds();
-		const halfLon = Math.max((bounds.east - bounds.west) / 2, 0.0005);
-		const halfLat = Math.max((bounds.north - bounds.south) / 2, 0.0005);
-		Object.assign(
-			bounds,
-			normalizeBounds({
-				west: lon - halfLon,
-				east: lon + halfLon,
-				south: lat - halfLat,
-				north: lat + halfLat,
-			})
-		);
-	}
+		if (recenterBounds) {
+			const bounds = getImageryBounds();
+			const halfLon = Math.max((bounds.east - bounds.west) / 2, 0.0005);
+			const halfLat = Math.max((bounds.north - bounds.south) / 2, 0.0005);
+			Object.assign(
+				bounds,
+				normalizeBounds({
+					west: lon - halfLon,
+					east: lon + halfLon,
+					south: lat - halfLat,
+					north: lat + halfLat,
+				})
+			);
+		}
 
-	emitConfigChange();
-	syncOverlaysFromConfig(false);
+		emitConfigChange();
+		syncOverlaysFromConfig(false);
+	});
 }
 
 function applyBoundsFromCorners() {
 	if (cornerMarkers.length !== 4) return;
 
-	const lats = cornerMarkers.map(m => m.getLatLng().lat);
-	const lngs = cornerMarkers.map(m => m.getLatLng().lng);
-	const next = normalizeBounds({
-		west: Math.min(...lngs),
-		east: Math.max(...lngs),
-		south: Math.min(...lats),
-		north: Math.max(...lats),
-	});
+	withMapDrivenUpdate(() => {
+		const lats = cornerMarkers.map(m => m.getLatLng().lat);
+		const lngs = cornerMarkers.map(m => m.getLatLng().lng);
+		const next = normalizeBounds({
+			west: Math.min(...lngs),
+			east: Math.max(...lngs),
+			south: Math.min(...lats),
+			north: Math.max(...lats),
+		});
 
-	Object.assign(getImageryBounds(), next);
-	emitConfigChange();
-	syncOverlaysFromConfig(false);
+		Object.assign(getImageryBounds(), next);
+		emitConfigChange();
+		syncOverlaysFromConfig(false);
+	});
 }
 
 function getViewBounds(): L.LatLngBounds {
@@ -145,6 +160,11 @@ function getViewBounds(): L.LatLngBounds {
 		return viewBounds.pad(2);
 	}
 	return viewBounds.pad(0.25);
+}
+
+function clearFitTimers() {
+	fitTimers.forEach(timer => clearTimeout(timer));
+	fitTimers.length = 0;
 }
 
 function fitOriginAndBounds() {
@@ -162,6 +182,8 @@ function fitOriginAndBounds() {
 }
 
 function scheduleFitView() {
+	clearFitTimers();
+
 	const attempt = () => {
 		fitOriginAndBounds();
 	};
@@ -169,10 +191,9 @@ function scheduleFitView() {
 	nextTick(() => {
 		requestAnimationFrame(() => {
 			attempt();
-			[50, 150, 320].forEach(delay => {
-				const timer = setTimeout(attempt, delay);
-				fitTimers.push(timer);
-			});
+			// 仅在初始化尺寸未就绪时再补一次，避免多次 fit 打爆瓦片请求
+			const timer = setTimeout(attempt, 120);
+			fitTimers.push(timer);
 		});
 	});
 }
@@ -290,9 +311,35 @@ function initMap() {
 		applyOrigin(lng, lat, false);
 	});
 
+	// 仅左键点击设置原点；右键用于浏览器菜单/避免误触
 	map.on("click", (event: L.LeafletMouseEvent) => {
-		if (disabled.value || syncingFromConfig) return;
+		if (disabled.value || syncingFromConfig || interacting) return;
+		if (event.originalEvent.button !== 0) return;
 		applyOrigin(event.latlng.lng, event.latlng.lat, true);
+	});
+
+	map.on("contextmenu", (event: L.LeafletMouseEvent) => {
+		event.originalEvent.preventDefault();
+	});
+
+	// 用户平移/缩放时不要被配置同步打断
+	map.on("movestart", () => {
+		interacting = true;
+	});
+	map.on("zoomstart", () => {
+		interacting = true;
+	});
+	map.on("moveend", () => {
+		window.setTimeout(() => {
+			if (!map) return;
+			interacting = false;
+		}, 0);
+	});
+	map.on("zoomend", () => {
+		window.setTimeout(() => {
+			if (!map) return;
+			interacting = false;
+		}, 0);
 	});
 
 	map.whenReady(() => {
@@ -302,10 +349,14 @@ function initMap() {
 	if (mapEl.value && typeof ResizeObserver !== "undefined") {
 		resizeObserver = new ResizeObserver(() => {
 			if (!map) return;
-			map.invalidateSize({ animate: false });
-			if (!initialFitDone) {
-				fitOriginAndBounds();
-			}
+			if (resizeTimer) clearTimeout(resizeTimer);
+			resizeTimer = setTimeout(() => {
+				if (!map) return;
+				map.invalidateSize({ animate: false });
+				if (!initialFitDone) {
+					fitOriginAndBounds();
+				}
+			}, 100);
 		});
 		resizeObserver.observe(mapEl.value);
 	}
@@ -314,8 +365,11 @@ function initMap() {
 }
 
 function destroyMap() {
-	fitTimers.forEach(timer => clearTimeout(timer));
-	fitTimers.length = 0;
+	clearFitTimers();
+	if (resizeTimer) {
+		clearTimeout(resizeTimer);
+		resizeTimer = null;
+	}
 	resizeObserver?.disconnect();
 	resizeObserver = null;
 	initialFitDone = false;
@@ -371,9 +425,21 @@ watch(
 		terrainConfig.value.origin?.longitude,
 		terrainConfig.value.origin?.latitude,
 	],
-	() => {
+	(next, prev) => {
 		if (interacting || syncingFromConfig) return;
+
+		const originChanged =
+			!prev ||
+			next[4] !== prev[4] ||
+			next[5] !== prev[5];
+
 		syncOverlaysFromConfig(false);
+
+		// 仅外部改原点时适配视角；地图内点击/拖拽不再 fit，避免瓦片反复重载
+		if (originChanged && !suppressAutoFit) {
+			initialFitDone = false;
+			scheduleFitView();
+		}
 	}
 );
 
@@ -405,7 +471,7 @@ onBeforeUnmount(() => {
 		<div class="relative">
 			<div ref="mapEl" class="terrain-minimap__map" />
 			<div class="terrain-minimap__toolbar absolute right-1 top-1">
-				<n-button size="tiny" quaternary :disabled="disabled" @click="fitToMarkers">
+				<n-button tertiary type="info" size="primary" :disabled="disabled" @click="fitToMarkers">
 					{{ t("layout.sider.terrain.Fit Mini Map") }}
 				</n-button>
 			</div>
