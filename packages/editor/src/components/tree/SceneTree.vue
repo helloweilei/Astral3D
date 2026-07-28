@@ -22,7 +22,7 @@ import {
   Renew
 } from '@vicons/carbon';
 import { t } from "@/language";
-import { App, Hooks, MoveObjectCommand, RemoveObjectCommand, AddObjectCommand, SetValueCommand } from "@astral3d/engine";
+import { App, Hooks, MoveObjectCommand, RemoveObjectCommand, AddObjectCommand, SetValueCommand, SetPositionCommand, Utils } from "@astral3d/engine";
 import { escapeHTML, findSiblingsAndIndex } from "@/utils/common/utils";
 import { getMaterialName } from "@/utils/common/scenes";
 import EsContextmenu from "@/components/es/EsContextmenu.vue";
@@ -484,6 +484,11 @@ function handleContextmenuSelect(key: string) {
 
       App.execute(new AddObjectCommand(_object));
       break;
+    case "grounding":
+      const dy = Utils.distanceToGround(object);
+      const newPosition = object.position.clone();
+      newPosition.y -= dy;
+      App.execute(new SetPositionCommand(object, newPosition));
   }
 }
 
@@ -498,6 +503,9 @@ onMounted(async () => {
       }, {
         label: t("layout.header.Clone"),
         key: 'clone'
+      }, {
+        label: t("layout.header.ClingFround"),
+        key: 'grounding'
       })
     }
   });

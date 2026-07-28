@@ -10,11 +10,11 @@ import {
 	enuToWgs84,
 	wgs84ToEnu,
 	getTileSizeMeters,
-	estimateZoomFromBounds,
 	resolveImageryZoom,
 	getTileRangeKey,
 	parseTileKey,
 	isTileInRange,
+	intersectBounds,
 	type Wgs84Coord,
 	type GeoBounds,
 } from "@/utils/geo/GeoUtils";
@@ -255,14 +255,13 @@ export class ImageryLayer {
 	 * 计算本帧应加载的 zoom 与地理范围。
 	 *
 	 * 策略：
-	 * - `lockLevel`：使用配置的 `lockedLevel`；
+	 * - `lockLevel`：使用配置的 `lockedLevel`，加载配置 bounds；
 	 * - 否则按视距做带滞回的 zoom 切换（`resolveImageryZoom`）；
-	 * - `fixedBounds || lockLevel`：只加载配置 bounds（固定范围）；
-	 * - 否则只按相机稳定视域加载，**不与配置 bounds 做并集**，
-	 *   避免右键平移后范围被越并越大引发瓦片风暴。
+	 * - 动态模式按相机稳定视域加载；若开启 `fixedBounds`，再与配置 bounds 求交，
+	 *   **不再**用整片固定范围压低 zoom（否则近景永远只能铺低清大瓦片）。
 	 */
 	private computeLoadPlan(camera: THREE.Camera, origin: Wgs84Coord, context?: ImageryUpdateContext): { zoom: number; loadBounds: GeoBounds } {
-		const { bounds, minZoom, maxZoom, lockLevel, lockedLevel, tilePadding } = this.config;
+		const { bounds, minZoom, maxZoom, lockLevel, lockedLevel, tilePadding, fixedBounds } = this.config;
 		const viewDistance = context?.viewDistance ?? camera.position.length();
 		const target = context?.target;
 
@@ -273,31 +272,38 @@ export class ImageryLayer {
 			zoom = resolveImageryZoom(this.currentZoom, viewDistance, minZoom, maxZoom);
 		}
 
-		const useFixedBounds = this.config.fixedBounds || lockLevel;
-
 		let loadBounds: GeoBounds;
-		if (useFixedBounds) {
-			const boundsZoomCap = estimateZoomFromBounds(bounds as GeoBounds, minZoom, maxZoom);
-			zoom = Math.min(zoom, boundsZoomCap);
+		if (lockLevel) {
 			loadBounds = { ...bounds } as GeoBounds;
 		} else if (target) {
 			loadBounds = getStableViewBounds(camera, target, origin, viewDistance, zoom);
+			if (fixedBounds) {
+				const clipped = intersectBounds(loadBounds, bounds as GeoBounds);
+				if (clipped) {
+					loadBounds = clipped;
+				} else {
+					const lon = (bounds.west + bounds.east) / 2;
+					const lat = (bounds.south + bounds.north) / 2;
+					loadBounds = { west: lon, east: lon, south: lat, north: lat };
+				}
+			}
 		} else {
 			loadBounds = { ...bounds } as GeoBounds;
 		}
 
-		const clampCenter = useFixedBounds
-			? {
-					longitude: (bounds.west + bounds.east) / 2,
-					latitude: (bounds.south + bounds.north) / 2,
-				}
-			: target
-				? enuToWgs84({ x: target.x, y: target.y, z: target.z }, origin)
-				: {
-						longitude: (loadBounds.west + loadBounds.east) / 2,
-						latitude: (loadBounds.south + loadBounds.north) / 2,
-						height: 0,
-					};
+		const clampCenter =
+			lockLevel || (fixedBounds && !target)
+				? {
+						longitude: (bounds.west + bounds.east) / 2,
+						latitude: (bounds.south + bounds.north) / 2,
+					}
+				: target
+					? enuToWgs84({ x: target.x, y: target.y, z: target.z }, origin)
+					: {
+							longitude: (loadBounds.west + loadBounds.east) / 2,
+							latitude: (loadBounds.south + loadBounds.north) / 2,
+							height: 0,
+						};
 
 		loadBounds = expandBounds(loadBounds, tilePadding ?? 2, zoom);
 		loadBounds = this.clampBoundsTileCount(loadBounds, zoom, MAX_ACTIVE_TILES, clampCenter.longitude, clampCenter.latitude);

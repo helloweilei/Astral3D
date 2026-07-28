@@ -85,7 +85,7 @@ new Preview(options: IPreviewSetting)
 | `render()` | 无 | `void` | 渲染预览场景和 CSS3D 场景，派发 `beforeRender`、`afterRender`。 |
 | `dispose()` | 无 | `void` | 解绑 resize、释放模块、清场景、移除 DOM、停止动画循环并释放 renderer。 |
 | `addParticle(emitter, body, name)` | `emitter: Particle.Emitter`；`body: THREE.Sprite \| THREE.Mesh`；`name?: string` | `ParticleEmitter` | 将粒子添加到预览场景并返回代理对象。 |
-| `getViewportImage()` | 无 | `Promise<HTMLImageElement>` | 截取预览画布。 |
+| `getViewportImage()` | 无 | `Promise<{image: HTMLImageElement, blob: Blob}>` | 截取预览画布。 |
 
 ## 事件
 

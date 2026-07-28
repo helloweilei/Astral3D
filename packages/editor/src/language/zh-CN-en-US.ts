@@ -103,6 +103,7 @@ export default {
 			Undertint: "浅色",
 			Dark: "深色",
 			"Main color": "主色调",
+			ClingFround: "贴合网格",
 		},
 		viewport: {
 			projection: "投影",

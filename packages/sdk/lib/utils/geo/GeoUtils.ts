@@ -6,10 +6,7 @@ const WGS84 = "EPSG:4326";
 /** Web 墨卡托投影（米），常用于 OSM/XYZ 瓦片 */
 const WEB_MERCATOR = "EPSG:3857";
 
-proj4.defs(
-	WEB_MERCATOR,
-	"+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs"
-);
+proj4.defs(WEB_MERCATOR, "+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs");
 
 /** 度 → 弧度 */
 const DEG2RAD = Math.PI / 180;
@@ -65,11 +62,7 @@ function wgs84ToEcef(lon: number, lat: number, height: number): THREE.Vector3 {
 	const cosLon = Math.cos(lonRad);
 	const n = WGS84_A / Math.sqrt(1 - WGS84_E2 * sinLat * sinLat);
 
-	return new THREE.Vector3(
-		(n + height) * cosLat * cosLon,
-		(n + height) * cosLat * sinLon,
-		(n * (1 - WGS84_E2) + height) * sinLat
-	);
+	return new THREE.Vector3((n + height) * cosLat * cosLon, (n + height) * cosLat * sinLon, (n * (1 - WGS84_E2) + height) * sinLat);
 }
 
 /**
@@ -214,11 +207,7 @@ export function lonLatToTile(lon: number, lat: number, zoom: number): { x: numbe
  * @param y 行号（自上而下）
  * @param z zoom 层级
  */
-export function tileToLonLatBounds(
-	x: number,
-	y: number,
-	z: number
-): { west: number; south: number; east: number; north: number } {
+export function tileToLonLatBounds(x: number, y: number, z: number): { west: number; south: number; east: number; north: number } {
 	const n = Math.pow(2, z);
 	const west = (x / n) * 360 - 180;
 	const east = ((x + 1) / n) * 360 - 180;
@@ -241,14 +230,26 @@ export function getTileSizeMeters(zoom: number): number {
 }
 
 /**
+ * 视距尺度上期望覆盖的瓦片数。
+ * 原公式令「瓦片边长 ≈ 视距」，近距离时整屏往往只有 1～2 块 256px 瓦片，会被严重拉伸发糊；
+ * 取 4 表示视距对应地面尺度约由 4 块瓦片覆盖，近景更清晰且瓦片量仍可控。
+ */
+const IMAGERY_ZOOM_DETAIL_FACTOR = 5;
+
+/** 某 Level 对应的切换视距（米）：`detailFactor × 赤道瓦片边长` */
+function viewDistanceForZoomLevel(zoom: number): number {
+	return (IMAGERY_ZOOM_DETAIL_FACTOR * 2 * Math.PI * WGS84_A) / Math.pow(2, zoom);
+}
+
+/**
  * 根据相机高度（或视距，米）粗估影像 Level。
- * 使单瓦片边长约等于给定高度对应的地面尺度。
+ * 使约 `IMAGERY_ZOOM_DETAIL_FACTOR` 块瓦片覆盖视距对应的地面尺度。
  *
  * @param altitude 视距或高度（米）
  * @param minZoom / maxZoom 合法区间钳制
  */
 export function estimateZoomFromAltitude(altitude: number, minZoom: number, maxZoom: number): number {
-	const size = Math.max(altitude, 1);
+	const size = Math.max(altitude / IMAGERY_ZOOM_DETAIL_FACTOR, 1);
 	let zoom = Math.floor(Math.log2((2 * Math.PI * WGS84_A) / size));
 	return Math.max(minZoom, Math.min(maxZoom, zoom));
 }
@@ -300,24 +301,17 @@ export function estimateZoomFromBounds(
  * @param currentZoom 当前已加载 Level，未知时传 `-1`
  * @param viewDistance 相机到目标点距离（米）
  */
-export function resolveImageryZoom(
-	currentZoom: number,
-	viewDistance: number,
-	minZoom: number,
-	maxZoom: number
-): number {
+export function resolveImageryZoom(currentZoom: number, viewDistance: number, minZoom: number, maxZoom: number): number {
 	const ideal = estimateZoomFromAltitude(viewDistance, minZoom, maxZoom);
 	if (currentZoom < 0) return ideal;
 	if (ideal === currentZoom) return currentZoom;
 
-	const worldSize = 2 * Math.PI * WGS84_A;
-
 	if (ideal > currentZoom) {
-		const zoomInDistance = worldSize / Math.pow(2, currentZoom + 0.55);
+		const zoomInDistance = viewDistanceForZoomLevel(currentZoom + 0.55);
 		return viewDistance < zoomInDistance ? Math.min(currentZoom + 1, maxZoom) : currentZoom;
 	}
 
-	const zoomOutDistance = worldSize / Math.pow(2, currentZoom - 0.45);
+	const zoomOutDistance = viewDistanceForZoomLevel(currentZoom - 0.45);
 	return viewDistance > zoomOutDistance ? Math.max(currentZoom - 1, minZoom) : currentZoom;
 }
 
@@ -328,13 +322,7 @@ export function resolveImageryZoom(
  * @param maxSpanLon 最大经度跨度（度）
  * @param maxSpanLat 最大纬度跨度（度）
  */
-export function clampBoundsAroundCenter(
-	bounds: GeoBounds,
-	centerLon: number,
-	centerLat: number,
-	maxSpanLon: number,
-	maxSpanLat: number
-): GeoBounds {
+export function clampBoundsAroundCenter(bounds: GeoBounds, centerLon: number, centerLat: number, maxSpanLon: number, maxSpanLat: number): GeoBounds {
 	const spanLon = bounds.east - bounds.west;
 	const spanLat = bounds.north - bounds.south;
 
@@ -382,12 +370,7 @@ export function parseTileKey(key: string): { zoom: number; x: number; y: number 
  * 判断瓦片 `(zoom,x,y)` 是否落在给定地理 bounds 覆盖的瓦片矩形内。
  * 注意：Y 方向使用「北→南」的 Slippy 索引比较。
  */
-export function isTileInRange(
-	zoom: number,
-	x: number,
-	y: number,
-	bounds: GeoBounds
-): boolean {
+export function isTileInRange(zoom: number, x: number, y: number, bounds: GeoBounds): boolean {
 	const minTile = lonLatToTile(bounds.west, bounds.north, zoom);
 	const maxTile = lonLatToTile(bounds.east, bounds.south, zoom);
 	return x >= minTile.x && x <= maxTile.x && y >= minTile.y && y <= maxTile.y;
@@ -403,6 +386,18 @@ export function mergeBounds(a: GeoBounds, b: GeoBounds): GeoBounds {
 		east: Math.max(a.east, b.east),
 		north: Math.max(a.north, b.north),
 	};
+}
+
+/**
+ * 求两个地理 bounds 的交集。无重叠时返回 `null`。
+ */
+export function intersectBounds(a: GeoBounds, b: GeoBounds): GeoBounds | null {
+	const west = Math.max(a.west, b.west);
+	const south = Math.max(a.south, b.south);
+	const east = Math.min(a.east, b.east);
+	const north = Math.min(a.north, b.north);
+	if (east <= west || north <= south) return null;
+	return { west, south, east, north };
 }
 
 /**
@@ -434,13 +429,7 @@ export function expandBounds(bounds: GeoBounds, paddingTiles: number, zoom: numb
  * @param viewDistance 相机到目标点距离（米）
  * @param zoom 当前影像 Level
  */
-export function getStableViewBounds(
-	camera: THREE.Camera,
-	target: THREE.Vector3,
-	origin: Wgs84Coord,
-	viewDistance: number,
-	zoom: number
-): GeoBounds {
+export function getStableViewBounds(camera: THREE.Camera, target: THREE.Vector3, origin: Wgs84Coord, viewDistance: number, zoom: number): GeoBounds {
 	const center = enuToWgs84({ x: target.x, y: target.y, z: target.z }, origin);
 	const distance = Math.max(viewDistance, 1);
 
@@ -479,19 +468,10 @@ export function getStableViewBounds(
  *
  * @returns 估算的 `GeoBounds`；实现上始终有兜底值（类型保留 `null` 兼容旧调用）
  */
-export function getGroundBoundsFromCamera(
-	camera: THREE.Camera,
-	target: THREE.Vector3,
-	origin: Wgs84Coord
-): GeoBounds | null {
+export function getGroundBoundsFromCamera(camera: THREE.Camera, target: THREE.Vector3, origin: Wgs84Coord): GeoBounds | null {
 	const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 	const raycaster = new THREE.Raycaster();
-	const ndcCorners = [
-		new THREE.Vector2(-1, -1),
-		new THREE.Vector2(1, -1),
-		new THREE.Vector2(1, 1),
-		new THREE.Vector2(-1, 1),
-	];
+	const ndcCorners = [new THREE.Vector2(-1, -1), new THREE.Vector2(1, -1), new THREE.Vector2(1, 1), new THREE.Vector2(-1, 1)];
 
 	const points: Wgs84Coord[] = [];
 	const hitPoint = new THREE.Vector3();
@@ -532,13 +512,7 @@ export function getGroundBoundsFromCamera(
 	const viewDistance = camera.position.distanceTo(target);
 	const maxSpan = Math.max(0.002, (viewDistance / 111320) * 2.5);
 
-	return clampBoundsAroundCenter(
-		{ west, south, east, north },
-		center.longitude,
-		center.latitude,
-		maxSpan,
-		maxSpan
-	);
+	return clampBoundsAroundCenter({ west, south, east, north }, center.longitude, center.latitude, maxSpan, maxSpan);
 }
 
 /**

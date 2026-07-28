@@ -1320,7 +1320,7 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 	 * @returns Promise<HTMLImageElement> 截屏的图片对象
 	 */
 	getViewportImage() {
-		return new Promise<HTMLImageElement>((resolve, rejcet) => {
+		return new Promise<{ image: HTMLImageElement; blob: Blob }>((resolve, rejcet) => {
 			// @ts-ignore
 			const _preserveDrawingBuffer = this.renderer.getContext().preserveDrawingBuffer;
 			// @ts-ignore
@@ -1342,7 +1342,7 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 				this.modules.viewHelper.hidden = true;
 				this.render();
 
-				resolve(image);
+				resolve({ image, blob });
 			});
 		});
 	}
