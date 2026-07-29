@@ -9,6 +9,8 @@ export default class Config {
         Config.config = {
             // 场景界面与扩展面板分割大小
             sceneSplitSize: 0.8,
+            // 左侧资源/场景树面板宽度（px）
+            assetsSiderWidth: 300,
             // 图纸绘制区
             cad:{
                 bgColor:0x000000
