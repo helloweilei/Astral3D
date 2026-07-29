@@ -1,6 +1,7 @@
 export { AddObjectCommand } from './AddObjectCommand';
 export { AddScriptCommand } from './AddScriptCommand';
 export { MoveObjectCommand } from './MoveObjectCommand';
+export { MultiCmdsCommand } from './MultiCmdsCommand';
 export { RemoveObjectCommand } from './RemoveObjectCommand';
 export { RemoveScriptCommand } from './RemoveScriptCommand';
 export { SetColorCommand } from './SetColorCommand';

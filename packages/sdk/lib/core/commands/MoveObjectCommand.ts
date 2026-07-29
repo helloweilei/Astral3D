@@ -54,9 +54,15 @@ class MoveObjectCommand extends Command {
         // this.object.applyMatrix4( _m1 );
         /** 放置到新组下时不改变世界坐标 End **/
 
+		// 追加到末尾时在 execute 阶段取 length，避免批量成组时构造阶段全都是 0 导致顺序颠倒
+		const insertIndex = this.newBefore === undefined
+			? this.newParent.children.length
+			: this.newIndex;
+
         const children = this.newParent.children;
-		children.splice( this.newIndex, 0, this.object );
+		children.splice( insertIndex, 0, this.object );
 		this.object.parent = this.newParent;
+		this.newIndex = insertIndex;
 
         /** 放置到新组下时不改变世界坐标 **/
         // this.object.updateWorldMatrix( false, true );

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { h, ref, onMounted, nextTick, onBeforeUnmount } from "vue";
-import { TreeOption, TreeDropInfo, NIcon, NBadge, NEllipsis, NButton } from "naive-ui";
+import { TreeOption, TreeDropInfo, NIcon, NBadge, NEllipsis, NButton, NInput } from "naive-ui";
 import {
   Camera,
   Schematics,
@@ -19,10 +19,13 @@ import {
   View,
   ViewOff,
   TrashCan,
-  Renew
+  Renew,
+  GroupObjects,
+  UngroupObjects
 } from '@vicons/carbon';
+import { Object3D, Group, Box3, Vector3, Matrix4 } from "three";
 import { t } from "@/language";
-import { App, Hooks, MoveObjectCommand, RemoveObjectCommand, AddObjectCommand, SetValueCommand, SetPositionCommand, Utils } from "@astral3d/engine";
+import { App, Hooks, MoveObjectCommand, RemoveObjectCommand, AddObjectCommand, MultiCmdsCommand, SetValueCommand, SetPositionCommand, Utils } from "@astral3d/engine";
 import { escapeHTML, findSiblingsAndIndex } from "@/utils/common/utils";
 import { getMaterialName } from "@/utils/common/scenes";
 import EsContextmenu from "@/components/es/EsContextmenu.vue";
@@ -45,12 +48,63 @@ const sceneTreeData = ref<TreeOption[]>([
     prefix: getPrefixIcon("Scene"),
   }
 ]);
+/** 树节点高亮 / 与视口模型选中同步（单选） */
 const sceneTreeSelected = ref<Array<string | number>>([]);
+/** 复选框勾选，仅用于成组/拆组，与模型选中独立 */
+const sceneTreeChecked = ref<Array<string | number>>([]);
 const sceneTreeExpandedKeys = ref<number[]>([]);
 const editEnabled = ref(false);
+const canGroupObjects = ref(false);
+const canUngroupObjects = ref(false);
 
 function canShowNodeActions(object3D) {
   return editEnabled.value && object3D && object3D !== App.camera && object3D !== App.scene;
+}
+
+function getObjectByTreeKey(key: string | number): Object3D | null {
+  const id = Number(key);
+  if (!Number.isFinite(id)) return null;
+  if (App.camera?.id === id) return App.camera;
+  return App.scene.getObjectById(id) ?? null;
+}
+
+function getCheckedEditableObjects(): Object3D[] {
+  return sceneTreeChecked.value
+    .map(getObjectByTreeKey)
+    .filter((obj): obj is Object3D => {
+      if (!obj) return false;
+      if (obj === App.camera || obj === App.scene) return false;
+      if (obj.ignore) return false;
+      return true;
+    });
+}
+
+function isGroupObject(object: Object3D): boolean {
+  return object.type === "Group" || (object as Group).isGroup === true;
+}
+
+function updateGroupActionState() {
+  const checked = getCheckedEditableObjects();
+
+  const nextCanGroup =
+    checked.length >= 2 &&
+    checked.every(obj => obj.parent !== null) &&
+    checked.every(obj => obj.parent === checked[0].parent);
+
+  const nextCanUngroup =
+    checked.length >= 1 &&
+    checked.every(obj => isGroupObject(obj) && obj.parent !== null);
+
+  const changed =
+    nextCanGroup !== canGroupObjects.value || nextCanUngroup !== canUngroupObjects.value;
+
+  canGroupObjects.value = nextCanGroup;
+  canUngroupObjects.value = nextCanUngroup;
+
+  // suffix 按钮 disabled 依赖上述状态，需触发树节点重渲染
+  if (changed && sceneTreeData.value.length > 0) {
+    sceneTreeData.value = [...sceneTreeData.value];
+  }
 }
 
 function toggleVisible(object3D) {
@@ -98,6 +152,52 @@ function getCameraResetSuffix(disabled = false) {
     ]);
 }
 
+function getSceneGroupSuffix(disabled = false) {
+  return () =>
+    h("div", { class: "scene-tree-node-suffix flex items-center ml-auto" }, [
+      h(
+        NButton,
+        {
+          quaternary: true,
+          circle: true,
+          size: "tiny",
+          disabled: disabled || !editEnabled.value || !canGroupObjects.value,
+          title: t("layout.sider.scene.Group"),
+          onClick: (event: Event) => {
+            event.stopPropagation();
+            confirmGroupObjects();
+          },
+        },
+        {
+          icon: () =>
+            h(NIcon, { size: 14 }, {
+              default: () => h(GroupObjects),
+            }),
+        }
+      ),
+      h(
+        NButton,
+        {
+          quaternary: true,
+          circle: true,
+          size: "tiny",
+          disabled: disabled || !editEnabled.value || !canUngroupObjects.value,
+          title: t("layout.sider.scene.Ungroup"),
+          onClick: (event: Event) => {
+            event.stopPropagation();
+            confirmUngroupObjects();
+          },
+        },
+        {
+          icon: () =>
+            h(NIcon, { size: 14 }, {
+              default: () => h(UngroupObjects),
+            }),
+        }
+      ),
+    ]);
+}
+
 function resetDefaultCamera() {
   if (!window.viewer?.modules?.cameraManage) return;
 
@@ -105,6 +205,155 @@ function resetDefaultCamera() {
   App.config.setKey("camera.navigationMode", "orbit");
   App.setViewportCamera(App.camera.uuid);
   Hooks.useDispatchSignal("cameraChanged", App.camera, window.viewer.modules.controls);
+  refreshUI();
+}
+
+function confirmGroupObjects() {
+  updateGroupActionState();
+  if (!canGroupObjects.value) {
+    window.$message?.warning(t("layout.sider.scene['Please select sibling objects to group']"));
+    return;
+  }
+
+  const groupName = ref("Group");
+  const status = ref<"error" | undefined>(undefined);
+
+  window.$dialog.warning({
+    title: t("layout.sider.scene.Group"),
+    content: () =>
+      h("div", { class: "flex flex-col gap-8px" }, [
+        h("div", t("layout.sider.scene['Group selected objects?']")),
+        h(NInput, {
+          value: groupName.value,
+          placeholder: t("layout.sider.scene['Group Name']"),
+          clearable: true,
+          size: "small",
+          status: status.value,
+          onUpdateValue: (value: string) => {
+            groupName.value = value;
+            status.value = value.trim() ? undefined : "error";
+          },
+        }),
+      ]),
+    positiveText: t("other.Ok"),
+    negativeText: t("other.Cancel"),
+    onPositiveClick: () => {
+      if (!groupName.value.trim()) {
+        status.value = "error";
+        return false;
+      }
+      groupSelectedObjects(groupName.value.trim());
+    },
+  });
+}
+
+function groupSelectedObjects(name: string) {
+  const checked = getCheckedEditableObjects();
+  if (checked.length < 2) return;
+
+  const parent = checked[0].parent;
+  if (!parent || !checked.every(obj => obj.parent === parent)) return;
+
+  const sorted = [...checked].sort(
+    (a, b) => parent.children.indexOf(a) - parent.children.indexOf(b)
+  );
+  const insertIndex = Math.min(...sorted.map(obj => parent.children.indexOf(obj)));
+
+  // 组原点放在勾选对象包围盒中心，避免变换器落在世界原点
+  const box = new Box3();
+  for (const obj of sorted) {
+    box.expandByObject(obj);
+  }
+  const centerWorld = box.getCenter(new Vector3());
+  const centerLocal = centerWorld.clone();
+  parent.worldToLocal(centerLocal);
+
+  const group = new Group();
+  group.name = name;
+  group.position.copy(centerLocal);
+
+  // 预计算：成组后子物体在组局部空间中的位置（保持世界坐标不变）
+  parent.updateWorldMatrix(true, true);
+  const groupMatrixWorld = parent.matrixWorld.clone().multiply(
+    new Matrix4().makeTranslation(centerLocal.x, centerLocal.y, centerLocal.z)
+  );
+  const invGroupWorld = groupMatrixWorld.clone().invert();
+
+  const commands: Array<AddObjectCommand | MoveObjectCommand | SetPositionCommand> = [
+    new AddObjectCommand(group, parent, insertIndex),
+  ];
+
+  for (const obj of sorted) {
+    const worldPos = new Vector3();
+    obj.getWorldPosition(worldPos);
+    const localInGroup = worldPos.clone().applyMatrix4(invGroupWorld);
+    commands.push(new MoveObjectCommand(obj, group, undefined));
+    commands.push(new SetPositionCommand(obj, localInGroup));
+  }
+
+  App.execute(new MultiCmdsCommand(commands, "Group objects"));
+  sceneTreeChecked.value = [];
+  sceneTreeSelected.value = [group.id];
+  refreshUI();
+}
+
+function confirmUngroupObjects() {
+  updateGroupActionState();
+  if (!canUngroupObjects.value) {
+    window.$message?.warning(t("layout.sider.scene['Please select groups to ungroup']"));
+    return;
+  }
+
+  window.$dialog.warning({
+    title: t("layout.sider.scene.Ungroup"),
+    content: t("layout.sider.scene['Ungroup selected groups?']"),
+    positiveText: t("other.Ok"),
+    negativeText: t("other.Cancel"),
+    onPositiveClick: () => {
+      ungroupSelectedObjects();
+    },
+  });
+}
+
+function ungroupSelectedObjects() {
+  const groups = getCheckedEditableObjects().filter(isGroupObject);
+  if (groups.length === 0) return;
+
+  const commands: Array<MoveObjectCommand | RemoveObjectCommand | SetPositionCommand> = [];
+  const promotedIds: number[] = [];
+
+  for (const group of groups) {
+    const parent = group.parent;
+    if (!parent) continue;
+
+    parent.updateWorldMatrix(true, true);
+    group.updateWorldMatrix(true, true);
+
+    const children = [...group.children];
+    for (const child of children) {
+      const worldPos = new Vector3();
+      child.getWorldPosition(worldPos);
+      const localInParent = worldPos.clone();
+      parent.worldToLocal(localInParent);
+
+      commands.push(new MoveObjectCommand(child, parent, group));
+      commands.push(new SetPositionCommand(child, localInParent));
+      promotedIds.push(child.id);
+    }
+    commands.push(new RemoveObjectCommand(group));
+  }
+
+  if (commands.length === 0) return;
+
+  App.execute(new MultiCmdsCommand(commands, "Ungroup objects"));
+  sceneTreeChecked.value = [];
+  if (promotedIds.length > 0) {
+    sceneTreeSelected.value = [promotedIds[0]];
+    App.selectById(promotedIds[0]);
+  } else {
+    sceneTreeSelected.value = [];
+    App.deselect();
+  }
   refreshUI();
 }
 
@@ -219,6 +468,7 @@ function refreshUI() {
     key: camera.id,
     isLeaf: true,
     disabled: (App.locked && App.locked.uuid !== camera.uuid),
+    checkboxDisabled: true,
     prefix: getPrefixIcon(camera.type),
     suffix: getCameraResetSuffix(Boolean(App.locked && App.locked.uuid !== camera.uuid)),
   });
@@ -229,15 +479,10 @@ function refreshUI() {
     key: scene.id,
     isLeaf: false,
     disabled: sceneDisabled,
+    checkboxDisabled: true,
     prefix: getPrefixIcon(scene.type),
-    // children: App.locked ? (function (){
-    //   if([scene.uuid,camera.uuid].includes(App.locked.uuid)){
-    //     return [];
-    //   }else {
-    //     return [getTreeData(App.locked)];
-    //   }
-    // })() : addObjects(scene)
-    children: addObjects(scene, sceneDisabled)
+    children: addObjects(scene, sceneDisabled),
+    suffix: getSceneGroupSuffix(sceneDisabled),
   });
 
   if (sceneTreeExpandedKeys.value.length === 0) {
@@ -284,11 +529,21 @@ function refreshUI() {
     return childArr;
   }
 
+  // 模型选中：与 App.selected 同步
   if (App.selected !== null) {
     sceneTreeSelected.value = [App.selected.id];
+  } else {
+    sceneTreeSelected.value = [];
   }
 
+  // 复选勾选：仅清理已删除节点，不与模型选中耦合
+  sceneTreeChecked.value = sceneTreeChecked.value.filter(key => {
+    const obj = getObjectByTreeKey(key);
+    return obj !== null && obj !== App.camera && obj !== App.scene;
+  });
+
   sceneTreeData.value = _sceneTreeData;
+  updateGroupActionState();
 }
 
 // 获取节点前缀图标
@@ -427,22 +682,40 @@ function allowDrop({ dropPosition, node }) {
   return true;
 }
 
-//场景树节点选中/取消选中事件
-function handlerTreeSelectChange(keys: Array<number>, _: Array<TreeOption>, meta: {
+// 树节点高亮选中 → 视口模型选中（与复选框独立）
+function handlerTreeSelectChange(keys: Array<number | string>, _: Array<TreeOption>, meta: {
   node: TreeOption,
   action: 'select' | 'unselect'
 }) {
-  sceneTreeSelected.value = keys;
-  if (meta.action === "select") {
-    App.selectById(keys[0]);
-  } else {
-    App.deselect();
+  if (meta.action === "select" && meta.node?.key != null) {
+    const id = Number(meta.node.key);
+    if (id === App.camera?.id || id === App.scene?.id) {
+      sceneTreeSelected.value = [];
+      App.deselect();
+      return;
+    }
+    sceneTreeSelected.value = [id];
+    App.selectById(id);
+    return;
   }
+
+  sceneTreeSelected.value = [];
+  App.deselect();
+}
+
+// 复选框勾选 → 仅更新成组/拆组状态，不改动模型选中
+function handlerTreeCheckChange(keys: Array<string | number>) {
+  sceneTreeChecked.value = keys.filter(key => {
+    const id = Number(key);
+    return id !== App.camera?.id && id !== App.scene?.id;
+  });
+  updateGroupActionState();
 }
 
 // 场景树节点点击事件，主要用于配合右键菜单
 function nodeProps({ option }: { option: TreeOption }) {
   return {
+    class: option.checkboxDisabled ? "scene-tree-node--no-checkbox" : undefined,
     onContextmenu(e: MouseEvent): void {
       e.preventDefault();
       if ([App.camera.id, App.scene.id].includes(option.key as number)) return;
@@ -535,10 +808,26 @@ onBeforeUnmount(() => {
 
 <template>
   <n-input v-model:value="pattern" :placeholder="t('layout.sider.scene.Search')" />
-  <n-tree ref="sceneTreeRef" virtual-scroll :pattern="pattern" :data="sceneTreeData"
-    v-model:selected-keys="sceneTreeSelected" :show-irrelevant-nodes="false"
-    v-model:expanded-keys="sceneTreeExpandedKeys" draggable :allow-drop="allowDrop" :node-props="nodeProps"
-    @drop="handleSceneTreeDrop" @update:selected-keys="handlerTreeSelectChange" block-line />
+  <n-tree
+    ref="sceneTreeRef"
+    virtual-scroll
+    checkable
+    :cascade="false"
+    :check-on-click="false"
+    :pattern="pattern"
+    :data="sceneTreeData"
+    v-model:selected-keys="sceneTreeSelected"
+    v-model:checked-keys="sceneTreeChecked"
+    :show-irrelevant-nodes="false"
+    v-model:expanded-keys="sceneTreeExpandedKeys"
+    draggable
+    :allow-drop="allowDrop"
+    :node-props="nodeProps"
+    @drop="handleSceneTreeDrop"
+    @update:selected-keys="handlerTreeSelectChange"
+    @update:checked-keys="handlerTreeCheckChange"
+    block-line
+  />
 
   <EsContextmenu ref="contextmenuRef" placement="right-start" trigger="manual" size="small"
     :options="contextmenuOptions" @select="handleContextmenuSelect" />
@@ -570,6 +859,11 @@ onBeforeUnmount(() => {
   :deep(.n-tree-node-content__suffix) {
     margin-left: auto;
     flex-shrink: 0;
+  }
+
+  /* 默认相机 / 默认场景：不展示复选框 */
+  :deep(.scene-tree-node--no-checkbox .n-tree-node-checkbox) {
+    display: none;
   }
 
   .scene-tree-node-suffix {

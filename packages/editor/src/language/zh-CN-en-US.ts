@@ -148,6 +148,13 @@ export default {
 			scene: {
 				Search: "搜索",
 				"Reset camera": "复位相机",
+				Group: "成组",
+				Ungroup: "拆组",
+				"Group Name": "组名称",
+				"Group selected objects?": "将选中的同级节点放入同一组？",
+				"Ungroup selected groups?": "拆分选中的组？子节点将提升到与组同级，组本身会被删除。",
+				"Please select sibling objects to group": "请选择至少两个同级节点后再成组",
+				"Please select groups to ungroup": "请选择一个或多个组后再拆组",
 				"Click Upload": "点击上传",
 				// 几何组件tab
 				Center: "居中",
