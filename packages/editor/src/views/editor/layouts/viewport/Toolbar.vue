@@ -66,7 +66,7 @@
         </n-space>
       </n-popover>
 
-      <GridConfig />
+      <PlaneConfig />
     </div>
   </div>
 </template>
@@ -78,7 +78,7 @@ import {Hooks,Utils} from '@astral3d/engine';
 import {t} from "@/language";
 import ViewportCamera from './ViewportCamera.vue';
 import ViewportShading from './ViewportShading.vue';
-import GridConfig from './GridConfig.vue';
+import PlaneConfig from './PlaneConfig.vue';
 
 const transform = ref("translate");
 function handlerRadioChange(value: string) {

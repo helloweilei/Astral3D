@@ -105,7 +105,7 @@ function flyToRegion() {
 	</div>
 
 	<div class="sidebar-config-item">
-		<span>{{ t("layout.sider.terrain.Hide Grid") }}</span>
+		<span>{{ t("layout.sider.terrain['Hide Plane']") }}</span>
 		<div>
 			<n-checkbox
 				size="small"

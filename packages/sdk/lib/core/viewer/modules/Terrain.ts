@@ -17,7 +17,6 @@ export class Terrain {
 	private viewer: Viewer;
 	private imageryLayer: ImageryLayer | null = null;
 	private tiles3DLayer: Tiles3DLayer | null = null;
-	private gridVisibleBeforeTerrain = true;
 	private savedMaxPolarAngle: number | null = null;
 	private readonly _clampTarget = new THREE.Vector3();
 
@@ -66,13 +65,26 @@ export class Terrain {
 		}
 	}
 
+	/**
+	 * 地形是否要求隐藏场景地面。
+	 *
+	 * 地面（网格线或贴图平面）会遮挡贴地的影像瓦片——瓦片关闭了深度写入且
+	 * renderOrder 极小，先于地面绘制，之后任何带深度写入的地面都会把它盖掉。
+	 * `Viewer.initGrid()` 重建地面时需要据此决定可见性。
+	 */
+	isGroundHidden(): boolean {
+		const config = this.getTerrainConfig();
+		return config.enabled && config.hideGrid;
+	}
+
+	/** 按地形配置与地面开关同步地面可见性 */
+	private syncGroundVisible() {
+		if (!this.viewer.grid) return;
+		this.viewer.grid.visible = this.viewer.options.grid.enabled && !this.isGroundHidden();
+	}
+
 	private enableTerrain(config: IAppProject.Terrain) {
-		if (this.viewer.grid) {
-			this.gridVisibleBeforeTerrain = this.viewer.grid.visible;
-			if (config.hideGrid) {
-				this.viewer.grid.visible = false;
-			}
-		}
+		this.syncGroundVisible();
 
 		this.applyTerrainCameraLimit();
 
@@ -126,9 +138,7 @@ export class Terrain {
 			this.tiles3DLayer = null;
 		}
 
-		if (this.viewer.grid) {
-			this.viewer.grid.visible = this.viewer.options.grid.enabled ? this.gridVisibleBeforeTerrain : false;
-		}
+		this.syncGroundVisible();
 
 		this.clearTerrainCameraLimit();
 	}

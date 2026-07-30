@@ -81,6 +81,7 @@ declare namespace IAppProject {
 
 	interface Terrain {
 		enabled: boolean;
+		/** 启用地形时隐藏场景地面（网格线或贴图平面），避免遮挡影像瓦片 */
 		hideGrid: boolean;
 		origin: {
 			longitude: number;

@@ -447,7 +447,55 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 	}
 
 	/**
-	 * 初始化网格
+	 * 解析可能携带 alpha 通道的 hex 颜色（`#RGBA` / `#RRGGBBAA`）
+	 */
+	protected parseColorWithAlpha(hexString: string): { color: THREE.Color; alpha: number } {
+		const hex = (hexString || "#ffffff").replace("#", "");
+		let colorHex = hex;
+		let alpha = 1;
+
+		if (hex.length === 8) {
+			colorHex = hex.substring(0, 6);
+			alpha = parseInt(hex.substring(6, 8), 16) / 255;
+		} else if (hex.length === 4) {
+			colorHex = hex.substring(0, 3);
+			colorHex = colorHex
+				.split("")
+				.map(c => c + c)
+				.join("");
+			alpha = parseInt(hex.substring(3, 4) + hex.substring(3, 4), 16) / 255;
+		}
+
+		return {
+			color: new THREE.Color(`#${colorHex}`),
+			alpha,
+		};
+	}
+
+	/**
+	 * 清空地面容器内的所有对象并释放几何体、材质与贴图
+	 */
+	protected clearGroundChildren() {
+		if (!this.grid) return;
+
+		this.grid.children.forEach((child: THREE.Object3D) => {
+			const mesh = child as THREE.Mesh;
+
+			if (mesh.geometry) mesh.geometry.dispose();
+
+			const materials = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+			materials.forEach(material => {
+				const map = (material as THREE.MeshStandardMaterial).map;
+				if (map) map.dispose();
+				material.dispose();
+			});
+		});
+
+		this.grid.children = [];
+	}
+
+	/**
+	 * 初始化地面：按 `options.grid.mode` 生成网格线或 XOZ 贴图平面
 	 * @protected
 	 */
 	initGrid() {
@@ -457,15 +505,7 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 			this.scene.add(this.grid);
 		}
 
-		if (this.grid.children.length > 0) {
-			this.grid.children.forEach((child: THREE.Object3D) => {
-				const mesh = child as THREE.Mesh;
-				if (mesh.material) {
-					(mesh.material as THREE.Material).dispose();
-				}
-			});
-			this.grid.children = [];
-		}
+		this.clearGroundChildren();
 
 		if (!this.options.grid.enabled) {
 			this.grid.visible = false;
@@ -473,33 +513,28 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 			return;
 		}
 
-		this.grid.visible = true;
+		// 地形要求隐藏地面时不能强行显示，否则会盖住贴地的影像瓦片
+		this.grid.visible = !this.modules?.terrain?.isGroundHidden();
 
-		const parseColorWithAlpha = (hexString: string): { color: THREE.Color; alpha: number } => {
-			const hex = hexString.replace("#", "");
-			let colorHex = hex;
-			let alpha = 1;
+		if (this.options.grid.mode === "texture") {
+			this.initGroundPlane();
+		} else {
+			this.initGridLines();
+		}
 
-			if (hex.length === 8) {
-				colorHex = hex.substring(0, 6);
-				alpha = parseInt(hex.substring(6, 8), 16) / 255;
-			} else if (hex.length === 4) {
-				colorHex = hex.substring(0, 3);
-				colorHex = colorHex
-					.split("")
-					.map(c => c + c)
-					.join("");
-				alpha = parseInt(hex.substring(3, 4) + hex.substring(3, 4), 16) / 255;
-			}
+		this.updateAxes();
+		this.render();
+	}
 
-			return {
-				color: new THREE.Color(`#${colorHex}`),
-				alpha,
-			};
-		};
+	/**
+	 * 生成主/次网格线
+	 * @protected
+	 */
+	protected initGridLines() {
+		if (!this.grid) return;
 
-		const mainColorResult = parseColorWithAlpha(this.options.grid.mainColor);
-		const subColorResult = parseColorWithAlpha(this.options.grid.color);
+		const mainColorResult = this.parseColorWithAlpha(this.options.grid.mainColor);
+		const subColorResult = this.parseColorWithAlpha(this.options.grid.color);
 
 		const gridSize = this.options.grid.row;
 		const mainDivisions = this.options.grid.column;
@@ -524,12 +559,66 @@ export default class Viewer extends THREE.EventDispatcher<ViewerEventMap> {
 		this.grid.add(mainGrid);
 
 		this.toggleSubGridByCameraDistance();
-		this.updateAxes();
-		this.render();
+	}
+
+	/**
+	 * 生成 XOZ 平面贴图地面
+	 * @protected
+	 */
+	protected initGroundPlane() {
+		if (!this.grid) return;
+
+		const config = this.options.grid.texture;
+		const { color, alpha } = this.parseColorWithAlpha(config.color);
+		const opacity = THREE.MathUtils.clamp(config.opacity ?? 1, 0, 1) * alpha;
+
+		const commonParams = {
+			color,
+			opacity,
+			transparent: opacity < 1,
+			side: THREE.DoubleSide,
+			// 与落在 y=0 的模型共面时避免闪烁
+			polygonOffset: true,
+			polygonOffsetFactor: 1,
+			polygonOffsetUnits: 1,
+		};
+
+		const material = config.lit
+			? new THREE.MeshStandardMaterial({
+					...commonParams,
+					roughness: THREE.MathUtils.clamp(config.roughness ?? 1, 0, 1),
+					metalness: THREE.MathUtils.clamp(config.metalness ?? 0, 0, 1),
+				})
+			: new THREE.MeshBasicMaterial(commonParams);
+
+		if (config.map) {
+			const texture = new THREE.TextureLoader().load(config.map, () => this.render());
+			texture.wrapS = THREE.RepeatWrapping;
+			texture.wrapT = THREE.RepeatWrapping;
+			texture.repeat.set(config.repeat || 1, config.repeat || 1);
+			texture.center.set(0.5, 0.5);
+			texture.rotation = THREE.MathUtils.degToRad(config.rotation || 0);
+			texture.colorSpace = THREE.SRGBColorSpace;
+			texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+			material.map = texture;
+		}
+
+		const size = config.size || this.options.grid.row;
+		const plane = new THREE.Mesh(new THREE.PlaneGeometry(size, size), material);
+		plane.name = "GroundPlane";
+		plane.ignore = true;
+		plane.rotation.x = -Math.PI / 2;
+		plane.receiveShadow = config.lit && config.receiveShadow !== false;
+		// 排在影像瓦片（renderOrder -1000）之前绘制，瓦片关闭了深度测试，
+		// 这样即便地形未隐藏地面，影像也能正常叠在平面之上
+		plane.renderOrder = -2000;
+
+		this.grid.add(plane);
 	}
 
 	toggleSubGridByCameraDistance() {
-		if (!this.grid || this.grid.children.length < 2) return;
+		if (!this.grid || this.options.grid.mode === "texture") return;
+		if (this.grid.children.length < 2) return;
 
 		const subGrid = this.grid.children[0];
 		const mainGrid = this.grid.children[1];

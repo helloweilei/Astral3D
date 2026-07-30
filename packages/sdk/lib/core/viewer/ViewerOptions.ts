@@ -18,15 +18,28 @@ export const ViewerOptions = (): IViewerSetting => ({
 	request: {
 		baseUrl: "",
 	},
-	// 场景内网格
+	// 场景地面（网格线 / 贴图平面）
 	grid: {
 		enabled: true,
+		mode: "grid",
 		color: "#555555",
 		mainColor: "#666666",
 		row: 200,
 		column: 200,
 		subGridDistance: 32,
 		showAxes: true,
+		texture: {
+			color: "#ffffff",
+			map: "",
+			opacity: 1,
+			size: 200,
+			repeat: 20,
+			rotation: 0,
+			lit: false,
+			roughness: 1,
+			metalness: 0,
+			receiveShadow: true,
+		},
 	},
 	// 相机控制器
 	control: {
