@@ -181,7 +181,7 @@ export const defaultProjectInfo = (): IAppProject.Info => ({
 		imagery: {
 			enabled: true,
 			provider: "osm",
-			url: "https://{switch:a,b,c}.tile-cyclosm.openstreetmap.fr/cyclosm/{zoom}/{x}/{y}.png",
+			url: "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
 			token: "",
 			minZoom: 10,
 			maxZoom: 18,
@@ -199,6 +199,17 @@ export const defaultProjectInfo = (): IAppProject.Info => ({
 			offset: { x: 0, y: 0, z: 0 },
 			rotation: { x: 0, y: 0, z: 0 },
 			scale: 1,
+			placement: {
+				enabled: false,
+				longitude: 0,
+				latitude: 0,
+				height: 0,
+			},
+			outline: {
+				enabled: false,
+				color: "#00e5ff",
+				width: 2,
+			},
 		},
 	},
 	// 场景信息

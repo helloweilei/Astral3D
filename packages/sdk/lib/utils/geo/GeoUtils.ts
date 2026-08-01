@@ -29,8 +29,9 @@ export interface Wgs84Coord {
 }
 
 /**
- * 局部 ENU（East-North-Up）坐标，单位米。
- * 在本引擎中映射为 Three.js：x=东，y=天，z=北。
+ * 局部场景坐标，单位米。
+ * 在本引擎中映射为 Three.js：x=东，y=天，z=北取反（南为正）。
+ * 与影像瓦片的铺设坐标系（Web 墨卡托平面，z = -墨卡托Y偏移）完全一致。
  */
 export interface EnuCoord {
 	x: number;
@@ -53,7 +54,7 @@ export interface GeoBounds {
  * WGS84 → ECEF（地心地固直角坐标，米）。
  * 使用椭球公式，含高程对法线方向的影响。
  */
-function wgs84ToEcef(lon: number, lat: number, height: number): THREE.Vector3 {
+export function wgs84ToEcef(lon: number, lat: number, height: number): THREE.Vector3 {
 	const lonRad = lon * DEG2RAD;
 	const latRad = lat * DEG2RAD;
 	const sinLat = Math.sin(latRad);
@@ -66,8 +67,12 @@ function wgs84ToEcef(lon: number, lat: number, height: number): THREE.Vector3 {
 }
 
 /**
- * 构建「ECEF → 以 origin 为原点的 ENU」变换矩阵。
- * 基向量顺序为 (East, Up, North)，与场景 Y-up 一致。
+ * 构建「ECEF → 以 origin 为原点的局部直立坐标系」变换矩阵。
+ * 输出坐标系与场景约定一致：x=东，y=天（椭球法线方向），z=南（北取反）。
+ *
+ * 注意旋转部分必须是"世界→局部"的投影（基向量为行），
+ * 历史实现误用 `makeBasis`（基向量为列，即局部→世界），导致
+ * 地理参考的 3D Tiles 模型出现整体倾斜。
  */
 function buildEnuMatrix(origin: Wgs84Coord): THREE.Matrix4 {
 	const lonRad = origin.longitude * DEG2RAD;
@@ -80,10 +85,12 @@ function buildEnuMatrix(origin: Wgs84Coord): THREE.Matrix4 {
 	const originEcef = wgs84ToEcef(origin.longitude, origin.latitude, origin.height);
 
 	const east = new THREE.Vector3(-sinLon, cosLon, 0);
-	const north = new THREE.Vector3(-sinLat * cosLon, -sinLat * sinLon, cosLat);
 	const up = new THREE.Vector3(cosLat * cosLon, cosLat * sinLon, sinLat);
+	// 场景 z 轴取南向（北取反），与影像瓦片 `z = -墨卡托Y` 的约定一致，构成右手系
+	const south = new THREE.Vector3(sinLat * cosLon, sinLat * sinLon, -cosLat);
 
-	const rotation = new THREE.Matrix4().makeBasis(east, up, north);
+	// makeBasis 以参数为列（局部→世界）；转置后基向量为行，得到世界→局部的投影
+	const rotation = new THREE.Matrix4().makeBasis(east, up, south).transpose();
 	const translation = new THREE.Matrix4().makeTranslation(-originEcef.x, -originEcef.y, -originEcef.z);
 
 	return new THREE.Matrix4().multiplyMatrices(rotation, translation);
@@ -117,34 +124,49 @@ export function setEnuOrigin(origin: Wgs84Coord) {
 }
 
 /**
- * WGS84 → 局部 ENU。
+ * WGS84 → 局部场景坐标。
+ *
+ * 采用与影像瓦片铺设完全一致的「Web 墨卡托平面差值」映射：
+ * `x = ΔmercX`，`y = Δ高度`，`z = -ΔmercY`。
+ * 这样地理锚点、相机飞行、拾取换算与瓦片平面天然对齐，
+ * 不存在椭球曲率导致的远距离下沉/偏移。
  *
  * @param coord 待转换点
- * @param origin ENU 原点（通常为地形配置原点）
- * @returns ENU 米制坐标 `{ x:东, y:天, z:北 }`
+ * @param origin 场景原点（通常为地形配置原点）
+ * @returns 场景米制坐标 `{ x:东, y:天, z:北取反 }`
  */
 export function wgs84ToEnu(coord: Wgs84Coord, origin: Wgs84Coord): EnuCoord {
-	ensureEnuMatrices(origin);
-	const ecef = wgs84ToEcef(coord.longitude, coord.latitude, coord.height);
-	ecef.applyMatrix4(_enuMatrix!);
-	return { x: ecef.x, y: ecef.y, z: ecef.z };
+	const merc = lonLatToMercatorMeters(coord.longitude, coord.latitude);
+	const originMerc = lonLatToMercatorMeters(origin.longitude, origin.latitude);
+	return {
+		x: merc.x - originMerc.x,
+		y: coord.height - origin.height,
+		z: -(merc.y - originMerc.y),
+	};
 }
 
 /**
- * 局部 ENU → WGS84。
- * ECEF→经纬度采用迭代求解纬度，精度对数字孪生尺度足够。
+ * 局部场景坐标 → WGS84。`wgs84ToEnu` 的精确逆映射。
  *
- * @param enu ENU 坐标（米）
- * @param origin ENU 原点
+ * @param enu 场景坐标（米）
+ * @param origin 场景原点
  */
 export function enuToWgs84(enu: EnuCoord, origin: Wgs84Coord): Wgs84Coord {
-	ensureEnuMatrices(origin);
-	const ecef = new THREE.Vector3(enu.x, enu.y, enu.z);
-	ecef.applyMatrix4(_enuInverse!);
+	const originMerc = lonLatToMercatorMeters(origin.longitude, origin.latitude);
+	const { lon, lat } = mercatorMetersToLonLat(originMerc.x + enu.x, originMerc.y - enu.z);
+	return {
+		longitude: lon,
+		latitude: lat,
+		height: enu.y + origin.height,
+	};
+}
 
-	const x = ecef.x;
-	const y = ecef.y;
-	const z = ecef.z;
+/**
+ * ECEF → WGS84 经纬度/椭球高。
+ * 纬度采用迭代求解，精度对数字孪生尺度足够。
+ */
+export function ecefToWgs84(ecef: { x: number; y: number; z: number }): Wgs84Coord {
+	const { x, y, z } = ecef;
 	const p = Math.sqrt(x * x + y * y);
 	const lon = Math.atan2(y, x) * RAD2DEG;
 	let lat = Math.atan2(z, p * (1 - WGS84_E2));
@@ -167,6 +189,74 @@ export function enuToWgs84(enu: EnuCoord, origin: Wgs84Coord): Wgs84Coord {
 		latitude: lat * RAD2DEG,
 		height,
 	};
+}
+
+/* ------------------------------------------------------------------ */
+/* GCJ-02（国测局加密坐标系）与 WGS84 互转                                */
+/* 高德/腾讯等国内瓦片源使用 GCJ-02，与 WGS84 相差约 100~700 米，          */
+/* 若不纠偏，地理参考模型（3D Tiles、地理锚点）会与底图错位。               */
+/* ------------------------------------------------------------------ */
+
+/** GCJ-02 加偏算法使用的克拉索夫斯基椭球长半轴 */
+const GCJ_A = 6378245.0;
+/** GCJ-02 加偏算法使用的椭球偏心率平方 */
+const GCJ_EE = 0.00669342162296594323;
+
+/** 中国境外不加偏 */
+function outOfChina(lon: number, lat: number): boolean {
+	return lon < 72.004 || lon > 137.8347 || lat < 0.8293 || lat > 55.8271;
+}
+
+function gcjTransformLat(x: number, y: number): number {
+	let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+	ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+	ret += ((20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin((y / 3.0) * Math.PI)) * 2.0) / 3.0;
+	ret += ((160.0 * Math.sin((y / 12.0) * Math.PI) + 320 * Math.sin((y * Math.PI) / 30.0)) * 2.0) / 3.0;
+	return ret;
+}
+
+function gcjTransformLon(x: number, y: number): number {
+	let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+	ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+	ret += ((20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin((x / 3.0) * Math.PI)) * 2.0) / 3.0;
+	ret += ((150.0 * Math.sin((x / 12.0) * Math.PI) + 300.0 * Math.sin((x / 30.0) * Math.PI)) * 2.0) / 3.0;
+	return ret;
+}
+
+/**
+ * WGS84 → GCJ-02（正向加偏）。中国境外原样返回。
+ */
+export function wgs84ToGcj02(lon: number, lat: number): { lon: number; lat: number } {
+	if (outOfChina(lon, lat)) return { lon, lat };
+
+	let dLat = gcjTransformLat(lon - 105.0, lat - 35.0);
+	let dLon = gcjTransformLon(lon - 105.0, lat - 35.0);
+	const radLat = (lat / 180.0) * Math.PI;
+	let magic = Math.sin(radLat);
+	magic = 1 - GCJ_EE * magic * magic;
+	const sqrtMagic = Math.sqrt(magic);
+	dLat = (dLat * 180.0) / (((GCJ_A * (1 - GCJ_EE)) / (magic * sqrtMagic)) * Math.PI);
+	dLon = (dLon * 180.0) / ((GCJ_A / sqrtMagic) * Math.cos(radLat) * Math.PI);
+
+	return { lon: lon + dLon, lat: lat + dLat };
+}
+
+/**
+ * GCJ-02 → WGS84（反向解偏）。
+ * 采用两轮迭代反解，精度约 1e-7 度（厘米级），对瓦片对齐足够。
+ */
+export function gcj02ToWgs84(lon: number, lat: number): { lon: number; lat: number } {
+	if (outOfChina(lon, lat)) return { lon, lat };
+
+	let wgsLon = lon;
+	let wgsLat = lat;
+	for (let i = 0; i < 2; i++) {
+		const gcj = wgs84ToGcj02(wgsLon, wgsLat);
+		wgsLon += lon - gcj.lon;
+		wgsLat += lat - gcj.lat;
+	}
+
+	return { lon: wgsLon, lat: wgsLat };
 }
 
 /**
@@ -516,7 +606,10 @@ export function getGroundBoundsFromCamera(camera: THREE.Camera, target: THREE.Ve
 }
 
 /**
- * 获取 ECEF→ENU 变换矩阵的拷贝（以给定原点）。
+ * 获取「ECEF → 以给定原点为中心的局部直立坐标系」变换矩阵的拷贝。
+ * 输出约定：x=东，y=天，z=南（北取反），与场景坐标一致。
+ *
+ * 主要用途：把地理参考的 ECEF 几何（如 3D Tiles）摆正为"就地直立"姿态。
  * 外部修改返回值不会影响内部缓存。
  */
 export function getEnuMatrix(origin: Wgs84Coord): THREE.Matrix4 {

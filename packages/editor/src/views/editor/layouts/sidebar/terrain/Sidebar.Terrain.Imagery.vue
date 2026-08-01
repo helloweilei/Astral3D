@@ -8,9 +8,10 @@ import EsInputNumber from "@/components/es/EsInputNumber.vue";
 let terrainConfig = defineModel<IAppProject.Terrain>({ required: true });
 const emit = defineEmits<{ change: [] }>();
 
+type ImageryPreset = (typeof Utils.OSM_IMAGERY_PRESETS)[number];
+
 const disabled = computed(() => !terrainConfig.value.enabled || !terrainConfig.value.imagery.enabled);
 const showUrlField = computed(() => ["osm", "custom"].includes(terrainConfig.value.imagery.provider));
-const isCustomProvider = computed(() => terrainConfig.value.imagery.provider === "custom");
 const urlPlaceholder = computed(() =>
 	terrainConfig.value.imagery.provider === "osm"
 		? Utils.DEFAULT_OSM_TILE_URL
@@ -18,11 +19,29 @@ const urlPlaceholder = computed(() =>
 );
 
 const presetDialogShow = ref(false);
-const customPresets = Utils.CUSTOM_IMAGERY_PRESETS;
+/** 预览加载失败的预置 id，避免反复请求同一张坏图 */
+const previewFailedIds = ref<string[]>([]);
+
+const presets = computed<ImageryPreset[]>(() =>
+	Utils.getImageryPresets(terrainConfig.value.imagery.provider)
+);
+const hasPresets = computed(() => presets.value.length > 0);
 
 const selectedPresetId = computed(() =>
-	Utils.findCustomImageryPresetId(terrainConfig.value.imagery.url)
+	Utils.findImageryPresetId(terrainConfig.value.imagery.provider, terrainConfig.value.imagery.url)
 );
+
+/**
+ * 预览瓦片索引：取当前影像范围中心，层级用范围估算值收敛到 [2, 12]，
+ * 让缩略图既能认出地貌，又不会去请求过深的瓦片。
+ */
+const previewTile = computed(() => {
+	const { bounds, minZoom, maxZoom } = terrainConfig.value.imagery;
+	const zoom = Math.max(2, Math.min(12, Utils.estimateZoomFromBounds(bounds, minZoom, maxZoom)));
+	const lon = (bounds.west + bounds.east) / 2;
+	const lat = (bounds.south + bounds.north) / 2;
+	return { zoom, ...Utils.lonLatToTile(lon, lat, zoom) };
+});
 
 const providerOptions = [
 	{ label: "OpenStreetMap", value: "osm" },
@@ -66,6 +85,7 @@ function estimateBoundsFromCamera() {
 
 function openPresetDialog() {
 	if (disabled.value) return;
+	previewFailedIds.value = [];
 	presetDialogShow.value = true;
 }
 
@@ -76,7 +96,21 @@ function selectPreset(url: string) {
 }
 
 function presetLabel(nameKey: string) {
-	return t(`layout.sider.terrain.${nameKey}`);
+	return t(`layout.sider.terrain['${nameKey}']`);
+}
+
+function previewUrl(preset: ImageryPreset) {
+	const { zoom, x, y } = previewTile.value;
+	return Utils.buildImageryTileUrl(terrainConfig.value.imagery.provider, zoom, x, y, {
+		url: preset.url,
+		token: terrainConfig.value.imagery.token,
+	});
+}
+
+function onPreviewError(id: string) {
+	if (!previewFailedIds.value.includes(id)) {
+		previewFailedIds.value.push(id);
+	}
 }
 </script>
 
@@ -102,8 +136,8 @@ function presetLabel(nameKey: string) {
 		<div class="url-field">
 			<n-input v-model:value="terrainConfig.imagery.url" :disabled="disabled" size="tiny"
 				:placeholder="urlPlaceholder" @change="onChange" />
-			<n-button v-if="isCustomProvider" size="tiny" :disabled="disabled"
-				:title="t('layout.sider.terrain.Preset Layers')" @click="openPresetDialog">
+			<n-button v-if="hasPresets" size="tiny" :disabled="disabled"
+				:title="t('layout.sider.terrain[\'Preset Layers\']')" @click="openPresetDialog">
 				<template #icon>
 					<n-icon>
 						<LayersOutline />
@@ -200,11 +234,18 @@ function presetLabel(nameKey: string) {
 		</div>
 	</div>
 
-	<n-modal v-model:show="presetDialogShow" preset="card" :title="t('layout.sider.terrain.Preset Layers')"
-		style="width: 480px" :mask-closable="true">
-		<div class="preset-list">
-			<button v-for="preset in customPresets" :key="preset.id" type="button" class="preset-item"
+	<n-modal v-model:show="presetDialogShow" preset="card" :title="t('layout.sider.terrain[\'Preset Layers\']')"
+		style="width: 600px" :mask-closable="true">
+		<div class="preset-grid">
+			<button v-for="preset in presets" :key="preset.id" type="button" class="preset-item"
 				:class="{ 'is-active': selectedPresetId === preset.id }" @click="selectPreset(preset.url)">
+				<div class="preset-item__preview">
+					<!-- 站点启用了 COEP require-corp，跨域图片必须以 CORS 模式请求才不会被拦截 -->
+					<img v-if="!previewFailedIds.includes(preset.id)" :src="previewUrl(preset)"
+						:alt="presetLabel(preset.nameKey)" crossorigin="anonymous" loading="lazy"
+						@error="onPreviewError(preset.id)" />
+					<span v-else>{{ t("layout.sider.terrain['Preview Unavailable']") }}</span>
+				</div>
 				<div class="preset-item__title">{{ presetLabel(preset.nameKey) }}</div>
 				<div class="preset-item__url">{{ preset.url }}</div>
 			</button>
@@ -236,19 +277,20 @@ function presetLabel(nameKey: string) {
 	}
 }
 
-.preset-list {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-	max-height: 420px;
+.preset-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+	max-height: 460px;
 	overflow-y: auto;
 }
 
 .preset-item {
 	display: block;
 	width: 100%;
+	min-width: 0;
 	text-align: left;
-	padding: 10px 12px;
+	padding: 8px;
 	border-radius: 6px;
 	border: 1px solid var(--n-border-color);
 	background: transparent;
@@ -266,17 +308,38 @@ function presetLabel(nameKey: string) {
 		background: rgba(79, 193, 160, 0.12);
 	}
 
+	&__preview {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		aspect-ratio: 1;
+		margin-bottom: 6px;
+		border-radius: 4px;
+		overflow: hidden;
+		background: rgba(0, 0, 0, 0.25);
+		font-size: 11px;
+		color: var(--n-text-color-3);
+
+		img {
+			width: 100%;
+			height: 100%;
+			object-fit: cover;
+		}
+	}
+
 	&__title {
-		font-size: 13px;
+		font-size: 12px;
 		font-weight: 500;
-		margin-bottom: 4px;
+		margin-bottom: 2px;
 	}
 
 	&__url {
-		font-size: 11px;
+		font-size: 10px;
 		line-height: 1.4;
 		color: var(--n-text-color-3);
-		word-break: break-all;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 }
 </style>

@@ -10,3 +10,4 @@ export {logger} from "./log/Logger";
 export type {ILog} from "./log/Logger";
 export * from "./geo/GeoUtils";
 export * from "./geo/ImageryProviders";
+export * from "./geo/Tiles3DPresets";

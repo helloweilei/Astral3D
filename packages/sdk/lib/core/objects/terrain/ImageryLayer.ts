@@ -1,6 +1,8 @@
 import * as THREE from "three";
-import { buildImageryTileUrl, type ImageryProviderId } from "@/utils/geo/ImageryProviders";
+import { buildImageryTileUrl, isGcj02ImageryUrl, type ImageryProviderId } from "@/utils/geo/ImageryProviders";
 import {
+	gcj02ToWgs84,
+	wgs84ToGcj02,
 	lonLatToMercatorMeters,
 	lonLatToTile,
 	setEnuOrigin,
@@ -105,6 +107,8 @@ export class ImageryLayer {
 	/** 异步纹理加载完成后标记，供下一帧触发渲染 */
 	private dirty = false;
 	private origin: Wgs84Coord;
+	/** 当前瓦片源是否为 GCJ-02 坐标系（高德/腾讯），需要做加偏纠正 */
+	private gcj02 = false;
 
 	/**
 	 * @param origin 地形 ENU 原点（WGS84）
@@ -112,6 +116,7 @@ export class ImageryLayer {
 	 */
 	constructor(origin: Wgs84Coord, config: IAppProject.Terrain["imagery"]) {
 		this.config = cloneImageryConfig(config);
+		this.gcj02 = isGcj02ImageryUrl(config.url);
 		this.group.name = "ImageryLayer";
 		this.group.ignore = true;
 		this.group.frustumCulled = false;
@@ -148,6 +153,7 @@ export class ImageryLayer {
 		const opacityChanged = this.config.opacity !== config.opacity;
 
 		this.config = cloneImageryConfig(config);
+		this.gcj02 = isGcj02ImageryUrl(config.url);
 		setEnuOrigin(origin);
 		this.origin = origin;
 		this.originMercator = lonLatToMercatorMeters(origin.longitude, origin.latitude);
@@ -355,12 +361,27 @@ export class ImageryLayer {
 	}
 
 	/**
+	 * WGS84 bounds → 瓦片源坐标系 bounds。
+	 * GCJ-02 源（高德/腾讯）做正向加偏，其余源原样返回。
+	 * 所有「经纬度 → 瓦片索引」的换算都必须先经过这里，
+	 * 否则选出的瓦片会相对场景（WGS84）偏移约 100~700 米。
+	 */
+	private toTileDatumBounds(bounds: GeoBounds): GeoBounds {
+		if (!this.gcj02) return bounds;
+
+		const sw = wgs84ToGcj02(bounds.west, bounds.south);
+		const ne = wgs84ToGcj02(bounds.east, bounds.north);
+		return { west: sw.lon, south: sw.lat, east: ne.lon, north: ne.lat };
+	}
+
+	/**
 	 * 若 bounds 对应瓦片数超过 `maxTiles`，以中心点等比缩小范围。
 	 * 用于兜底保护，避免极端视距下一次请求过多瓦片。
 	 */
 	private clampBoundsTileCount(bounds: GeoBounds, zoom: number, maxTiles: number, centerLon: number, centerLat: number): GeoBounds {
-		const minTile = lonLatToTile(bounds.west, bounds.north, zoom);
-		const maxTile = lonLatToTile(bounds.east, bounds.south, zoom);
+		const tileDatumBounds = this.toTileDatumBounds(bounds);
+		const minTile = lonLatToTile(tileDatumBounds.west, tileDatumBounds.north, zoom);
+		const maxTile = lonLatToTile(tileDatumBounds.east, tileDatumBounds.south, zoom);
 		const countX = maxTile.x - minTile.x + 1;
 		const countY = maxTile.y - minTile.y + 1;
 		const total = countX * countY;
@@ -388,8 +409,10 @@ export class ImageryLayer {
 	 * - 错误 zoom 的立即删除；最后做 LRU 淘汰。
 	 */
 	private planVisibleTiles(zoom: number, bounds: GeoBounds, now: number) {
-		const minTile = lonLatToTile(bounds.west, bounds.north, zoom);
-		const maxTile = lonLatToTile(bounds.east, bounds.south, zoom);
+		// 换算到瓦片源坐标系（GCJ-02 源需加偏），保证选出的瓦片覆盖场景中的 WGS84 范围
+		const tileDatumBounds = this.toTileDatumBounds(bounds);
+		const minTile = lonLatToTile(tileDatumBounds.west, tileDatumBounds.north, zoom);
+		const maxTile = lonLatToTile(tileDatumBounds.east, tileDatumBounds.south, zoom);
 		const nextActiveKeys = new Set<string>();
 		const nextQueue: PendingTile[] = [];
 
@@ -408,7 +431,7 @@ export class ImageryLayer {
 			}
 		}
 
-		const removalBounds = expandBounds(bounds, REMOVAL_HALO_TILES, zoom);
+		const removalBounds = expandBounds(tileDatumBounds, REMOVAL_HALO_TILES, zoom);
 		const staleZoomKeys: string[] = [];
 
 		for (const key of this.tiles.keys()) {
@@ -500,16 +523,27 @@ export class ImageryLayer {
 	 * 加载失败时用占位色块，避免整片空白难以排查。
 	 */
 	private createTile(z: number, x: number, y: number, key: string) {
-		// 瓦片范围
+		// 瓦片范围（瓦片源自身坐标系，GCJ-02 源即为加偏后的经纬度）
 		const tileBounds = tileToLonLatBounds(x, y, z);
 		const sw = lonLatToMercatorMeters(tileBounds.west, tileBounds.south);
 		const ne = lonLatToMercatorMeters(tileBounds.east, tileBounds.north);
 
 		const sizeX = ne.x - sw.x;
 		const sizeY = ne.y - sw.y;
-		// 瓦片中心相对原点的 ENU 坐标
-		const centerX = (sw.x + ne.x) / 2 - this.originMercator.x;
-		const centerY = (sw.y + ne.y) / 2 - this.originMercator.y;
+
+		// 瓦片中心换算回 WGS84 再定位：GCJ-02 源必须反向解偏，
+		// 否则底图相对地理参考模型（3D Tiles、地理锚点）偏移约 100~700 米
+		let centerLon = (tileBounds.west + tileBounds.east) / 2;
+		let centerLat = (tileBounds.south + tileBounds.north) / 2;
+		if (this.gcj02) {
+			const wgs = gcj02ToWgs84(centerLon, centerLat);
+			centerLon = wgs.lon;
+			centerLat = wgs.lat;
+		}
+		const centerMercator = lonLatToMercatorMeters(centerLon, centerLat);
+		// 瓦片中心相对原点的场景坐标
+		const centerX = centerMercator.x - this.originMercator.x;
+		const centerY = centerMercator.y - this.originMercator.y;
 
 		const geometry = new THREE.PlaneGeometry(sizeX, sizeY);
 		// 绕 X 轴旋转 90 度，将瓦片平铺到 XZ 地平面
@@ -655,9 +689,15 @@ export class ImageryLayer {
 	isPointInTile(point: [number, number], record: TileRecord): boolean {
 		const enu = new THREE.Vector3(point[0], 0, point[1]);
 		const wgs84 = enuToWgs84(enu, this.origin);
+		// 瓦片 bounds 在瓦片源坐标系下，GCJ-02 源需把场景点加偏后再比较
+		let lon = wgs84.longitude;
+		let lat = wgs84.latitude;
+		if (this.gcj02) {
+			const gcj = wgs84ToGcj02(lon, lat);
+			lon = gcj.lon;
+			lat = gcj.lat;
+		}
 		const tileBounds = tileToLonLatBounds(record.x, record.y, record.zoom);
-		return (
-			wgs84.longitude >= tileBounds.west && wgs84.longitude <= tileBounds.east && wgs84.latitude >= tileBounds.south && wgs84.latitude <= tileBounds.north
-		);
+		return lon >= tileBounds.west && lon <= tileBounds.east && lat >= tileBounds.south && lat <= tileBounds.north;
 	}
 }

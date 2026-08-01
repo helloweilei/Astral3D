@@ -49,6 +49,12 @@ function ensureTerrainDefaults(config: IAppProject.Terrain) {
 	}
 	if (config.imagery.tilePadding === undefined) config.imagery.tilePadding = 2;
 	if (config.imagery.fixedBounds === undefined) config.imagery.fixedBounds = false;
+	if (config.tiles3d && !config.tiles3d.placement) {
+		config.tiles3d.placement = { enabled: false, longitude: 0, latitude: 0, height: 0 };
+	}
+	if (config.tiles3d && !config.tiles3d.outline) {
+		config.tiles3d.outline = { enabled: false, color: "#00e5ff", width: 2 };
+	}
 	if (config.imagery.provider === "osm" || config.imagery.provider === "custom") {
 		config.imagery.url = Utils.resolveImageryUrlForProvider(
 			config.imagery.provider,

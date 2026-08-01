@@ -370,6 +370,22 @@ export class Terrain {
 	 * - `null`：地形未启用，无法拾取；
 	 * - `number`：命中表面时的 Y 高度；未命中任何 mesh 时返回 `0`（视为地平面）
 	 */
+	/**
+	 * 返回当前可拾取的地形表面 mesh（影像瓦片 + 3D Tiles）。
+	 * 这些对象通常带 `ignore`，不会进入 Viewer 默认选中射线，
+	 * 测距等工具需单独向它们发射射线。
+	 */
+	getPickTargets(): THREE.Object3D[] {
+		const targets: THREE.Object3D[] = [];
+		if (this.imageryLayer) {
+			targets.push(...this.imageryLayer.getPickTargets());
+		}
+		if (this.tiles3DLayer) {
+			targets.push(...this.tiles3DLayer.getPickTargets());
+		}
+		return targets;
+	}
+
 	pickSurfaceHeight(x: number, z: number): number | null {
 		const config = this.getTerrainConfig();
 		if (!config.enabled) return null;
@@ -401,6 +417,39 @@ export class Terrain {
 
 	get tiles3dErrorMessage() {
 		return this.tiles3DLayer?.errorMessage ?? "";
+	}
+
+	/**
+	 * 获取当前 3D Tiles 瓦片集自身的地理锚点（WGS84）。
+	 * 未加载或非地理参考的瓦片集返回 null。
+	 * 供「同步地形原点」「定位」等 UI 操作读取。
+	 */
+	getTiles3DAnchor(): Wgs84Coord | null {
+		return this.tiles3DLayer?.anchor ? { ...this.tiles3DLayer.anchor } : null;
+	}
+
+	/**
+	 * 实测 3D Tiles 模型地表相对场景地平面（y=0）的高度。
+	 * 供「贴地」操作使用；未加载或射线落空时返回 null。
+	 */
+	getTiles3DGroundOffsetY(): number | null {
+		return this.tiles3DLayer?.getGroundOffsetY() ?? null;
+	}
+
+	/**
+	 * 开启/关闭 3D Tiles 视口编辑（gizmo 拖拽整体调整）。
+	 * 拖拽结束后通过 `tiles3dEditCommitted` 信号提交 偏移/旋转/缩放。
+	 */
+	setTiles3DEditEnabled(enabled: boolean) {
+		this.tiles3DLayer?.setEditEnabled(enabled);
+	}
+
+	/**
+	 * 3D Tiles 是否处于视口编辑状态。
+	 * 用户点选其他物体夺走 gizmo 后返回 false，UI 可据此同步开关状态。
+	 */
+	isTiles3DEditActive(): boolean {
+		return this.tiles3DLayer?.isEditActive() ?? false;
 	}
 
 	setObjectGeoAnchor(object: THREE.Object3D, anchor: Wgs84Coord | null) {

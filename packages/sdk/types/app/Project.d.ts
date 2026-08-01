@@ -111,9 +111,34 @@ declare namespace IAppProject {
 			enabled: boolean;
 			url: string;
 			maximumScreenSpaceError: number;
+			/** 整体调整：相对定位点的偏移（米，场景坐标） */
 			offset: { x: number; y: number; z: number };
+			/** 整体调整：以定位点为枢轴的旋转（度） */
 			rotation: { x: number; y: number; z: number };
+			/** 整体调整：整体缩放 */
 			scale: number;
+			/**
+			 * 定位：把瓦片集中心放置到指定经纬度/高度。
+			 * 未启用时使用瓦片集自身的地理锚点。
+			 * 旧场景数据可能缺省该字段。
+			 */
+			placement?: {
+				enabled: boolean;
+				longitude: number;
+				latitude: number;
+				height: number;
+			};
+			/**
+			 * 地形描边：在影像平面绘制 3D Tiles 足迹边界线，便于与底图区分。
+			 * 旧场景数据可能缺省该字段。
+			 */
+			outline?: {
+				enabled: boolean;
+				/** 描边颜色（hex） */
+				color: string;
+				/** 描边宽度（屏幕像素） */
+				width: number;
+			};
 		};
 	}
 

@@ -1,27 +1,36 @@
 <template>
   <div class="w-full h-full">
-    <Toolbar/>
+    <Toolbar />
 
-    <div id="viewport" ref="viewportRef" class="absolute top-0 left-0 w-full h-full" @pointerdown="handleViewportPointerdown">
-      <ViewportInfo/>
+    <div id="viewport" ref="viewportRef" class="absolute top-0 left-0 w-full h-full"
+      @pointerdown="handleViewportPointerdown">
+      <ViewportInfo />
+    </div>
+
+    <!-- 右侧叠放：指南针与工具条垂直居中对齐，置于 viewport 外避免被 canvas 截获点击 -->
+    <div class="viewport-right-stack">
+      <ViewportCompass />
+      <ViewportTools />
     </div>
 
     <!--  RVT BIM 构件信息悬浮框  -->
-    <BIMProperties/>
+    <BIMProperties />
 
     <!-- IFC BIM 构件信息悬浮框   -->
-    <IFCProperties/>
+    <IFCProperties />
   </div>
 </template>
 
 <script setup lang="ts">
-import {onMounted, ref, nextTick, onBeforeUnmount} from 'vue';
-import {App,Viewer,Hooks} from "@astral3d/engine";
+import { onMounted, ref, nextTick, onBeforeUnmount } from 'vue';
+import { App, Viewer, Hooks } from "@astral3d/engine";
 import Toolbar from "./Toolbar.vue";
-import {useGlobalConfigStore} from "@/store/modules/globalConfig";
-import {usePluginStore} from "@/store/modules/plugin";
-import {installBuiltinPlugin} from "@/plugin";
+import { useGlobalConfigStore } from "@/store/modules/globalConfig";
+import { usePluginStore } from "@/store/modules/plugin";
+import { installBuiltinPlugin } from "@/plugin";
 import ViewportInfo from "./ViewportInfo.vue";
+import ViewportCompass from "./ViewportCompass.vue";
+import ViewportTools from "./ViewportTools.vue";
 import BIMProperties from "./BIMProperties.vue";
 import IFCProperties from "./IFCProperties.vue";
 
@@ -45,7 +54,7 @@ onMounted(async () => {
       enabled: true
     },
     request: {
-      baseUrl:"/file/static/"
+      baseUrl: "/file/static/"
     },
     control: {
       navigationMode,
@@ -86,12 +95,26 @@ onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleCameraNavigationShortcut);
 });
 
-function handleViewportPointerdown(){
+function handleViewportPointerdown() {
   const focusedElement = document.activeElement;
   // @ts-ignore
-  if(focusedElement && focusedElement.blur) {
+  if (focusedElement && focusedElement.blur) {
     // @ts-ignore
     focusedElement.blur();
   }
 }
 </script>
+
+<style scoped lang="less">
+.viewport-right-stack {
+  position: absolute;
+  top: 44px;
+  right: 12px;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+</style>

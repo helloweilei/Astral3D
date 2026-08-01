@@ -46,6 +46,8 @@ const appSignals: SignalRegister = {
 	sceneSnowSettingsChanged: new Signal(),
 	sceneLightningSettingsChanged: new Signal(),
 	sceneTerrainSettingsChanged: new Signal(),
+	// 3D Tiles 视口编辑（gizmo 拖拽）提交：携带 { offset, rotation, scale }
+	tiles3dEditCommitted: new Signal(),
 	sceneGraphChanged: new Signal(),
 	sceneRendered: new Signal(),
 	sceneResize: new Signal(),
