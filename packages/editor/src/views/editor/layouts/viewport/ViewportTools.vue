@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useThemeVars } from "naive-ui";
 import { CloseOutline, RefreshOutline } from "@vicons/ionicons5";
-import { Ruler } from "@vicons/carbon";
+import { Ruler, AreaCustom } from "@vicons/carbon";
 import { App, Hooks } from "@astral3d/engine";
 import { t } from "@/language";
 import {
@@ -11,7 +11,7 @@ import {
 	type MeasurePointInfo,
 } from "@/utils/viewport/DistanceMeasureTool";
 
-type ToolId = "distance";
+type ToolId = "distance" | "area";
 
 const themeVars = useThemeVars();
 const popupStyle = computed(() => ({
@@ -31,9 +31,9 @@ const measureState = ref<DistanceMeasureState>({
 	distance: null,
 });
 
-const measureTool = new DistanceMeasureTool();
+const distanceMeasureTool = new DistanceMeasureTool();
 
-const showMeasurePopup = computed(() => terrainEnabled.value && activeTool.value === "distance");
+const showDistanceMeasurePopup = computed(() => terrainEnabled.value && activeTool.value === "distance");
 
 function syncTerrainVisible() {
 	terrainEnabled.value = !!App.project.getKey("terrain.enabled");
@@ -42,9 +42,10 @@ function syncTerrainVisible() {
 function formatPoint(point: MeasurePointInfo | null) {
 	if (!point) return "-";
 	if (point.longitude !== undefined && point.latitude !== undefined) {
-		return `${point.longitude}, ${point.latitude}, ${point.height ?? point.y}`;
+		return `${point.longitude}, ${point.latitude}, ${point.height}`;
+	} else {
+		return "-";
 	}
-	return `${point.x}, ${point.y}, ${point.z}`;
 }
 
 function formatDistance(distance: number | null) {
@@ -60,17 +61,17 @@ function openDistance() {
 	}
 
 	activeTool.value = "distance";
-	measureTool.open(state => {
+	distanceMeasureTool.open(state => {
 		measureState.value = { ...state };
 	});
 }
 
-function resetMeasure() {
-	measureTool.reset();
+function resetDistanceMeasure() {
+	distanceMeasureTool.reset();
 }
 
-function closeMeasure() {
-	measureTool.close();
+function closeDistanceMeasure() {
+	distanceMeasureTool.close();
 	measureState.value = { point1: null, point2: null, distance: null };
 	if (activeTool.value === "distance") {
 		activeTool.value = null;
@@ -79,7 +80,7 @@ function closeMeasure() {
 
 function closeActiveTool() {
 	if (activeTool.value === "distance") {
-		closeMeasure();
+		closeDistanceMeasure();
 	}
 }
 
@@ -101,18 +102,19 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
 	Hooks.useRemoveSignal("sceneTerrainSettingsChanged", syncTerrainVisible);
-	measureTool.dispose();
+	distanceMeasureTool.dispose();
 });
 </script>
 
 <template>
 	<div v-if="terrainEnabled" class="viewport-tools">
 		<!-- 测距 popup：常规面板风格，仅手动关闭 -->
-		<div v-if="showMeasurePopup" class="viewport-tools__popup" :style="popupStyle" @pointerdown.stop @click.stop>
+		<div v-if="showDistanceMeasurePopup" class="viewport-tools__popup" :style="popupStyle" @pointerdown.stop
+			@click.stop>
 			<div class="viewport-tools__popup-header">
 				<span>{{ t("layout.scene.tools.Distance") }}</span>
 				<n-button quaternary circle size="tiny" :title="t('layout.scene.tools.Close')"
-					@click.stop="closeMeasure">
+					@click.stop="closeDistanceMeasure">
 					<template #icon>
 						<n-icon :size="12">
 							<CloseOutline />
@@ -139,7 +141,7 @@ onBeforeUnmount(() => {
 			</div>
 
 			<div class="viewport-tools__popup-footer">
-				<n-button size="tiny" :disabled="!measureState.point1" @click.stop="resetMeasure">
+				<n-button size="tiny" :disabled="!measureState.point1" @click.stop="resetDistanceMeasure">
 					<template #icon>
 						<n-icon>
 							<RefreshOutline />
@@ -166,6 +168,19 @@ onBeforeUnmount(() => {
 				</template>
 				{{ t("layout.scene.tools.Distance") }}
 			</n-tooltip>
+			<n-tooltip placement="left" trigger="hover">
+				<template #trigger>
+					<n-button circle size="tiny" class="viewport-tools__btn"
+						:class="{ 'is-active': activeTool === 'area' }" @click.stop="onToolClick('area')">
+						<template #icon>
+							<n-icon :size="10" :color="iconColor">
+								<AreaCustom />
+							</n-icon>
+						</template>
+					</n-button>
+				</template>
+				{{ t("layout.scene.tools.Area") }}
+			</n-tooltip>
 		</div>
 	</div>
 </template>
@@ -180,7 +195,7 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 3px;
+	gap: 8px;
 	padding: 3px;
 	pointer-events: auto;
 	border-radius: 999px;
@@ -191,12 +206,11 @@ onBeforeUnmount(() => {
 }
 
 .viewport-tools__btn {
-	/* 相对原先 26px / 间距 6px 整体缩小约一倍 */
-	--n-width: 14px !important;
-	--n-height: 14px !important;
-	--n-font-size: 10px !important;
-	--n-icon-size: 10px !important;
-	padding: 0 !important;
+	--n-width: 18px !important;
+	--n-height: 18px !important;
+	--n-font-size: 14px !important;
+	--n-icon-size: 14px !important;
+	padding: 2px !important;
 
 	&.is-active {
 		--n-border: 1px solid v-bind(iconColor) !important;

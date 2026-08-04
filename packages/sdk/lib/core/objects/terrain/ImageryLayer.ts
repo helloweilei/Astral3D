@@ -542,8 +542,8 @@ export class ImageryLayer {
 		}
 		const centerMercator = lonLatToMercatorMeters(centerLon, centerLat);
 		// 瓦片中心相对原点的场景坐标
-		const centerX = centerMercator.x - this.originMercator.x;
-		const centerY = centerMercator.y - this.originMercator.y;
+		const centerEnuX = centerMercator.x - this.originMercator.x;
+		const centerEnuY = centerMercator.y - this.originMercator.y;
 
 		const geometry = new THREE.PlaneGeometry(sizeX, sizeY);
 		// 绕 X 轴旋转 90 度，将瓦片平铺到 XZ 地平面
@@ -559,7 +559,7 @@ export class ImageryLayer {
 		});
 
 		const mesh = new THREE.Mesh(geometry, material);
-		mesh.position.set(centerX, 0, -centerY);
+		mesh.position.set(centerEnuX, 0, -centerEnuY);
 		// 忽略碰撞检测
 		mesh.ignore = true;
 		mesh.userData.terrainPick = true;

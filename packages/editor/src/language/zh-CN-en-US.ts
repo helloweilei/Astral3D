@@ -210,6 +210,7 @@ export default {
 				Reset: "重置",
 				Close: "关闭",
 				"Click map to pick": "点击地图拾取点位",
+				Area: "测面积",
 			},
 		},
 		sider: {

@@ -1,11 +1,8 @@
 import * as THREE from "three";
 import { CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
-import { App, Hooks, Utils } from "@astral3d/engine";
+import { App, Hooks, Utils, createCircleMesh } from "@astral3d/engine";
 
 export interface MeasurePointInfo {
-	x: number;
-	y: number;
-	z: number;
 	/** 地形开启时附带经纬度/高度 */
 	longitude?: number;
 	latitude?: number;
@@ -32,18 +29,14 @@ const LINE_MATERIAL = new THREE.LineBasicMaterial({
 	depthWrite: false,
 });
 
-const MARKER_MATERIAL = new THREE.MeshBasicMaterial({
-	color: 0xe63c17,
-	depthTest: false,
-	depthWrite: false,
-});
+const MARKER_MATERIAL_COLOR = 0xe63c17;
 
 /**
  * 编辑器视口两点测距工具。
  * 进入后拦截选中，点击地图依次采集点1/点2，场景中绘制标记、连线与距离标签。
  */
 export class DistanceMeasureTool {
-	/** 会话是否打开（popup 仍显示、标记仍保留） */
+	/** 是否标记仍保留 */
 	private active = false;
 	/** 是否处于拾取/绘制模式 */
 	private picking = false;
@@ -331,7 +324,7 @@ export class DistanceMeasureTool {
 	}
 
 	/**
-	 * 轻量拾取：用 canvas 像素算 NDC。
+	 * 轻量拾取：用 canvas 像素算 NDC（归一化设备坐标）。
 	 * 优先普通场景物体；否则取视线与地平面交点，再按地形表面高度贴地。
 	 * 不再每帧对全部影像瓦片做射线检测（那会卡死主线程并导致瓦片停更、画面闪烁）。
 	 */
@@ -358,6 +351,7 @@ export class DistanceMeasureTool {
 			return sceneHits[0].point.clone();
 		}
 
+		// 射线与地平面相交
 		if (!this.raycaster.ray.intersectPlane(this.groundPlane, this.hitPoint)) {
 			return null;
 		}
@@ -371,11 +365,7 @@ export class DistanceMeasureTool {
 	}
 
 	private toPointInfo(p: THREE.Vector3): MeasurePointInfo {
-		const info: MeasurePointInfo = {
-			x: Number(p.x.toFixed(2)),
-			y: Number(p.y.toFixed(2)),
-			z: Number(p.z.toFixed(2)),
-		};
+		const info = {} as MeasurePointInfo;
 
 		const terrainEnabled = !!App.project.getKey("terrain.enabled");
 		if (terrainEnabled) {
@@ -394,15 +384,17 @@ export class DistanceMeasureTool {
 	private emit() {
 		const point1 = this.points[0] ? this.toPointInfo(this.points[0]) : null;
 		const point2 = this.points[1] ? this.toPointInfo(this.points[1]) : null;
-		const distance =
-			this.points.length === 2 ? Number(this.points[0].distanceTo(this.points[1]).toFixed(2)) : null;
+		const distance = this.points.length === 2 ? Number(this.points[0].distanceTo(this.points[1]).toFixed(2)) : null;
 		this.listener?.({ point1, point2, distance });
 	}
 
 	private createMarker(point: THREE.Vector3) {
 		// 单位球，实际屏幕大小由 updateMarkerScales 按相机距离换算为约 8px
-		const geometry = new THREE.SphereGeometry(1, 12, 12);
-		const mesh = new THREE.Mesh(geometry, MARKER_MATERIAL.clone());
+		const mesh = createCircleMesh({
+			strokeColor: new THREE.Color(MARKER_MATERIAL_COLOR),
+			radius: 6,
+			strokeWidth: 4,
+		});
 		mesh.position.copy(point);
 		mesh.renderOrder = 999;
 		(mesh as any).ignore = true;
@@ -420,7 +412,7 @@ export class DistanceMeasureTool {
 		const canvasH = this.canvas?.clientHeight || 800;
 		const fov = cam.isPerspectiveCamera ? cam.fov : 50;
 		const worldPerPixel = (2 * dist * Math.tan(THREE.MathUtils.degToRad(fov / 2))) / canvasH;
-		const radiusPx = 6;
+		const radiusPx = 10;
 		marker.scale.setScalar(Math.max(0.05, worldPerPixel * radiusPx));
 	}
 
@@ -451,11 +443,11 @@ export class DistanceMeasureTool {
 		div.className = "viewport-measure-label";
 		div.textContent = text;
 		div.style.cssText = [
-			"padding:2px 8px",
+			"padding:2px 4px",
 			"border-radius:4px",
 			"background:rgba(20,24,32,0.82)",
 			"color:#fff",
-			"font-size:12px",
+			"font-size:10px",
 			"font-weight:600",
 			"white-space:nowrap",
 			"border:1px solid rgba(230,60,23,0.85)",

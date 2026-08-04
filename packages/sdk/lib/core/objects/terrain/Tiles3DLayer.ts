@@ -39,14 +39,37 @@ function ringToLinePositions(ring: FootprintPoint[], y: number): Float32Array {
 	return out;
 }
 
-/** XZ 平面凸包（Andrew 单调链），顶点按逆时针 */
+/**
+ * 在场景水平面（XZ，忽略高度 Y）上计算点集的凸包。
+ *
+ * 用途：3D Tiles 根节点 OBB 的 8 个角点投影到地面后，取出最外一圈多边形，
+ * 作为贴地足迹描边的兜底边界（规则四边形/多边形），避免凹进去的内点干扰。
+ *
+ * 算法：Andrew 单调链（Monotone Chain）
+ * 1. 按 x 升序、同 x 再按 z 升序排序；
+ * 2. 从左到右扫一遍得到下凸壳（lower），从右到左扫一遍得到上凸壳（upper）；
+ * 3. 每一步用二维叉积判断「是否右转/共线」：`cross <= 0` 则弹出栈顶，保证壳为左转凸链；
+ * 4. 上下壳各去掉首尾重复端点后拼接，结果顶点大致按逆时针排列。
+ *
+ * 复杂度 O(n log n)（排序主导）；点数很少（OBB 投影通常 ≤ 8）时开销可忽略。
+ *
+ * @param points 水平面点集（可含重复/共线点）
+ * @returns 凸包顶点；点数 ≤ 2 时原样拷贝返回（构不成面）
+ */
 function convexHullXZ(points: FootprintPoint[]): FootprintPoint[] {
 	if (points.length <= 2) return points.slice();
 
+	// 单调链要求从左到右有序，同 x 时按 z 排稳定共线情况
 	const sorted = points.slice().sort((a, b) => (a.x === b.x ? a.z - b.z : a.x - b.x));
 
+	/**
+	 * 二维叉积 (a-o)×(b-o) 的 z 分量：
+	 * > 0 表示 o→a→b 逆时针（左转），< 0 顺时针（右转），= 0 共线。
+	 * 凸壳构造时丢掉右转/共线拐点，使边界始终「左转」。
+	 */
 	const cross = (o: FootprintPoint, a: FootprintPoint, b: FootprintPoint) => (a.x - o.x) * (b.z - o.z) - (a.z - o.z) * (b.x - o.x);
 
+	// 下凸壳：从最左扫到最右
 	const lower: FootprintPoint[] = [];
 	for (const p of sorted) {
 		while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
@@ -55,6 +78,7 @@ function convexHullXZ(points: FootprintPoint[]): FootprintPoint[] {
 		lower.push(p);
 	}
 
+	// 上凸壳：从最右扫回最左
 	const upper: FootprintPoint[] = [];
 	for (let i = sorted.length - 1; i >= 0; i--) {
 		const p = sorted[i];
@@ -64,6 +88,7 @@ function convexHullXZ(points: FootprintPoint[]): FootprintPoint[] {
 		upper.push(p);
 	}
 
+	// 上下壳首尾是同一对角端点，各 pop 一次避免闭合环上重复顶点
 	lower.pop();
 	upper.pop();
 	return lower.concat(upper);
@@ -221,29 +246,26 @@ export class Tiles3DLayer {
 	private resolveAnchor(): Wgs84Coord | null {
 		if (!this.tilesRenderer) return null;
 
+		const minLen = Tiles3DLayer.MIN_GEOREFERENCED_ECEF_LENGTH;
+		const toWgsIfEcef = (ecef: THREE.Vector3): Wgs84Coord | null => (ecef.length() > minLen ? ecefToWgs84(ecef) : null);
+
+		// 根节点 transform 平移 → 优先提供高度
 		const rootTransform = (this.tilesRenderer as any).root?.engineData?.transform as THREE.Matrix4 | undefined;
-		let transformWgs: Wgs84Coord | null = null;
-		if (rootTransform) {
-			const pos = new THREE.Vector3().setFromMatrixPosition(rootTransform);
-			if (pos.length() > Tiles3DLayer.MIN_GEOREFERENCED_ECEF_LENGTH) {
-				transformWgs = ecefToWgs84(pos);
-			}
-		}
+		const transformWgs = rootTransform ? toWgsIfEcef(new THREE.Vector3().setFromMatrixPosition(rootTransform)) : null;
 
+		// 包围球中心 → 优先提供水平经纬度
 		const sphere = new THREE.Sphere();
-		if (this.tilesRenderer.getBoundingSphere(sphere) && sphere.center.length() > Tiles3DLayer.MIN_GEOREFERENCED_ECEF_LENGTH) {
-			const sphereWgs = ecefToWgs84(sphere.center);
-			if (transformWgs) {
-				return {
-					longitude: sphereWgs.longitude,
-					latitude: sphereWgs.latitude,
-					height: transformWgs.height,
-				};
-			}
-			return sphereWgs;
+		const sphereWgs = this.tilesRenderer.getBoundingSphere(sphere) ? toWgsIfEcef(sphere.center) : null;
+
+		if (sphereWgs && transformWgs) {
+			return {
+				longitude: sphereWgs.longitude,
+				latitude: sphereWgs.latitude,
+				height: transformWgs.height,
+			};
 		}
 
-		return transformWgs;
+		return sphereWgs ?? transformWgs;
 	}
 
 	/**
@@ -501,7 +523,7 @@ export class Tiles3DLayer {
 
 	/**
 	 * 计算瓦片在影像平面（水平 XZ）上的足迹多边形。
-	 * 优先用根节点 OBB 八点投影后的凸包，避免轴对齐三维盒被放大。
+	 * 优先用根节点 OBB（有向包围盒） 八点投影后的凸包，避免轴对齐三维盒被放大。
 	 */
 	private getGroundFootprintRing(): FootprintPoint[] | null {
 		if (!this.tilesRenderer) return null;
@@ -650,16 +672,17 @@ export class Tiles3DLayer {
 		const startY = center.y + radius + 100;
 		raycaster.far = radius * 2 + 200;
 
-		// 7×7 采样网格，覆盖足迹的内接范围（半径 × 0.7）
+		// 7×7 采样网格，覆盖以中心为原点、边长 2×half 的正方形（含 ±X、±Z 四象限）
 		const samples = 7;
 		const half = radius * 0.7;
 		let minY: number | null = null;
 
 		for (let i = 0; i < samples; i++) {
 			for (let j = 0; j < samples; j++) {
-				const x = center.x + ((i / (samples - 1)) * 2 - 1) * half;
-				const z = center.z + ((j / (samples - 1)) * 2 - 1) * half;
-				raycaster.set(new THREE.Vector3(x, startY, z), down);
+				// t∈[0,1] → 偏移 ∈[-half, +half]
+				const ox = THREE.MathUtils.lerp(-half, half, i / (samples - 1));
+				const oz = THREE.MathUtils.lerp(-half, half, j / (samples - 1));
+				raycaster.set(new THREE.Vector3(center.x + ox, startY, center.z + oz), down);
 
 				const hits = raycaster.intersectObjects(targets, false);
 				if (hits.length > 0) {

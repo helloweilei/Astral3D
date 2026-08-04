@@ -44,16 +44,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-	<div
-		v-if="visible"
-		class="viewport-compass"
-		:title="t('layout.scene.compass.Orientation')"
-	>
+	<div v-if="visible" class="viewport-compass" :title="t('layout.scene.compass.Orientation')">
 		<div class="viewport-compass__dial" :style="{ transform: `rotate(${rotationDeg}deg)` }">
-			<span class="viewport-compass__label viewport-compass__label--n">{{ t("layout.scene.compass.N") }}</span>
-			<span class="viewport-compass__label viewport-compass__label--e">{{ t("layout.scene.compass.E") }}</span>
-			<span class="viewport-compass__label viewport-compass__label--s">{{ t("layout.scene.compass.S") }}</span>
-			<span class="viewport-compass__label viewport-compass__label--w">{{ t("layout.scene.compass.W") }}</span>
+			<span class="viewport-compass__label viewport-compass__label--n">N</span>
+			<span class="viewport-compass__label viewport-compass__label--e">E</span>
+			<span class="viewport-compass__label viewport-compass__label--s">S</span>
+			<span class="viewport-compass__label viewport-compass__label--w">W</span>
 			<div class="viewport-compass__needle" />
 			<div class="viewport-compass__tick viewport-compass__tick--n" />
 			<div class="viewport-compass__tick viewport-compass__tick--e" />

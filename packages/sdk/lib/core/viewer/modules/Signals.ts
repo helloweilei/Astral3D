@@ -440,7 +440,11 @@ export class Signals {
 		}
 		this.viewer.pathtracer?.setSize();
 
-		this.viewer.css3DRenderer.setSize(this.viewer.container.offsetWidth, this.viewer.container.offsetHeight);
+		const width = this.viewer.container.offsetWidth;
+		const height = this.viewer.container.offsetHeight;
+		// CSS2D 标签（如测距 label）用内部宽高投影像素位置，resize 后必须同步
+		this.viewer.css2DRenderer.setSize(width, height);
+		this.viewer.css3DRenderer.setSize(width, height);
 
 		this.viewer.modules.viewHelper.update();
 

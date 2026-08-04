@@ -354,6 +354,22 @@ export class Terrain {
 	}
 
 	/**
+	 * 返回当前可拾取的地形表面 mesh（影像瓦片 + 3D Tiles）。
+	 * 这些对象通常带 `ignore`，不会进入 Viewer 默认选中射线，
+	 * 测距等工具需单独向它们发射射线。
+	 */
+	getPickTargets(): THREE.Object3D[] {
+		const targets: THREE.Object3D[] = [];
+		if (this.imageryLayer) {
+			targets.push(...this.imageryLayer.getPickTargets());
+		}
+		if (this.tiles3DLayer) {
+			targets.push(...this.tiles3DLayer.getPickTargets());
+		}
+		return targets;
+	}
+
+	/**
 	 * 在指定 ENU 水平位置拾取地形/影像表面高度（Y）。
 	 *
 	 * 实现方式：从 `(x, 10000, z)` 竖直向下发射射线，依次检测
@@ -370,22 +386,6 @@ export class Terrain {
 	 * - `null`：地形未启用，无法拾取；
 	 * - `number`：命中表面时的 Y 高度；未命中任何 mesh 时返回 `0`（视为地平面）
 	 */
-	/**
-	 * 返回当前可拾取的地形表面 mesh（影像瓦片 + 3D Tiles）。
-	 * 这些对象通常带 `ignore`，不会进入 Viewer 默认选中射线，
-	 * 测距等工具需单独向它们发射射线。
-	 */
-	getPickTargets(): THREE.Object3D[] {
-		const targets: THREE.Object3D[] = [];
-		if (this.imageryLayer) {
-			targets.push(...this.imageryLayer.getPickTargets());
-		}
-		if (this.tiles3DLayer) {
-			targets.push(...this.tiles3DLayer.getPickTargets());
-		}
-		return targets;
-	}
-
 	pickSurfaceHeight(x: number, z: number): number | null {
 		const config = this.getTerrainConfig();
 		if (!config.enabled) return null;
