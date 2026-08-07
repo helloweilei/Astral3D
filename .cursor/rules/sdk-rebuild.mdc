@@ -1,0 +1,29 @@
+---
+description: 修改 SDK（packages/sdk）后必须重新打包，编辑器才能用到最新构建产物
+globs: packages/sdk/**/*
+alwaysApply: false
+---
+
+# SDK 修改后必须重新打包
+
+编辑器依赖 `@astral3d/engine` 的 **dist 构建产物**，不是直接引用 `packages/sdk/lib` 源码。
+
+## 必须执行
+
+凡改动 `packages/sdk` 下源码、类型或会进入构建的资源后，在任务结束前执行：
+
+```bash
+pnpm sdk:build
+```
+
+等价命令：`pnpm --filter @astral3d/engine build`。
+
+## 完成标准
+
+- 打包成功（exit code 0）后再向用户确认改动完成
+- 提醒用户如编辑器已在跑，可能需要硬刷新页面
+
+## 例外
+
+- 仅改文档、注释且不要求运行验证时，可跳过打包，但需在回复中说明未打包
+- 用户明确说「先别打包」时可跳过

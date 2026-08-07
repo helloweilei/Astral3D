@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useThemeVars } from "naive-ui";
-import { CloseOutline, RefreshOutline } from "@vicons/ionicons5";
+import { CheckmarkOutline, CloseOutline, RefreshOutline } from "@vicons/ionicons5";
 import { Ruler, AreaCustom } from "@vicons/carbon";
 import { App, Hooks } from "@astral3d/engine";
 import { t } from "@/language";
@@ -26,26 +26,28 @@ const terrainEnabled = ref(false);
 
 const activeTool = ref<ToolId | null>(null);
 const measureState = ref<DistanceMeasureState>({
-	point1: null,
-	point2: null,
-	distance: null,
+	points: [],
+	segments: [],
+	total: null,
+	picking: false,
 });
 
 const distanceMeasureTool = new DistanceMeasureTool();
 
 const showDistanceMeasurePopup = computed(() => terrainEnabled.value && activeTool.value === "distance");
+const canFinishDistance = computed(
+	() => measureState.value.picking && measureState.value.points.length >= 2
+);
 
 function syncTerrainVisible() {
 	terrainEnabled.value = !!App.project.getKey("terrain.enabled");
 }
 
-function formatPoint(point: MeasurePointInfo | null) {
-	if (!point) return "-";
+function formatPoint(point: MeasurePointInfo) {
 	if (point.longitude !== undefined && point.latitude !== undefined) {
-		return `${point.longitude}, ${point.latitude}, ${point.height}`;
-	} else {
-		return "-";
+		return `${point.longitude}, ${point.latitude}, ${point.height ?? "-"}`;
 	}
+	return "-";
 }
 
 function formatDistance(distance: number | null) {
@@ -62,7 +64,7 @@ function openDistance() {
 
 	activeTool.value = "distance";
 	distanceMeasureTool.open(state => {
-		measureState.value = { ...state };
+		measureState.value = { ...state, points: [...state.points], segments: [...state.segments] };
 	});
 }
 
@@ -70,9 +72,13 @@ function resetDistanceMeasure() {
 	distanceMeasureTool.reset();
 }
 
+function finishDistanceMeasure() {
+	distanceMeasureTool.finishPicking();
+}
+
 function closeDistanceMeasure() {
 	distanceMeasureTool.close();
-	measureState.value = { point1: null, point2: null, distance: null };
+	measureState.value = { points: [], segments: [], total: null, picking: false };
 	if (activeTool.value === "distance") {
 		activeTool.value = null;
 	}
@@ -108,13 +114,22 @@ onBeforeUnmount(() => {
 
 <template>
 	<div v-if="terrainEnabled" class="viewport-tools">
-		<!-- 测距 popup：常规面板风格，仅手动关闭 -->
-		<div v-if="showDistanceMeasurePopup" class="viewport-tools__popup" :style="popupStyle" @pointerdown.stop
-			@click.stop>
+		<div
+			v-if="showDistanceMeasurePopup"
+			class="viewport-tools__popup"
+			:style="popupStyle"
+			@pointerdown.stop
+			@click.stop
+		>
 			<div class="viewport-tools__popup-header">
 				<span>{{ t("layout.scene.tools.Distance") }}</span>
-				<n-button quaternary circle size="tiny" :title="t('layout.scene.tools.Close')"
-					@click.stop="closeDistanceMeasure">
+				<n-button
+					quaternary
+					circle
+					size="tiny"
+					:title="t('layout.scene.tools.Close')"
+					@click.stop="closeDistanceMeasure"
+				>
 					<template #icon>
 						<n-icon :size="12">
 							<CloseOutline />
@@ -124,41 +139,74 @@ onBeforeUnmount(() => {
 			</div>
 
 			<div class="viewport-tools__popup-body">
-				<div class="viewport-tools__row">
-					<span class="viewport-tools__label">{{ t("layout.scene.tools['Point 1']") }}</span>
-					<span class="viewport-tools__value">{{ formatPoint(measureState.point1) }}</span>
+				<div v-if="measureState.points.length === 0" class="viewport-tools__empty">
+					{{ t("layout.scene.tools['No Points']") }}
 				</div>
-				<div class="viewport-tools__row">
-					<span class="viewport-tools__label">{{ t("layout.scene.tools['Point 2']") }}</span>
-					<span class="viewport-tools__value">{{ formatPoint(measureState.point2) }}</span>
+				<div
+					v-for="(point, index) in measureState.points"
+					:key="index"
+					class="viewport-tools__row"
+				>
+					<span class="viewport-tools__label">
+						{{ t("layout.scene.tools.Point") }} {{ index + 1 }}
+						<template v-if="index > 0 && measureState.segments[index - 1] !== undefined">
+							· {{ formatDistance(measureState.segments[index - 1]) }}
+						</template>
+					</span>
+					<span class="viewport-tools__value">{{ formatPoint(point) }}</span>
 				</div>
-				<div class="viewport-tools__row">
-					<span class="viewport-tools__label">{{ t("layout.scene.tools.Distance") }}</span>
+				<div v-if="measureState.total !== null" class="viewport-tools__row">
+					<span class="viewport-tools__label">{{ t("layout.scene.tools['Total Distance']") }}</span>
 					<span class="viewport-tools__value viewport-tools__value--accent" :style="{ color: iconColor }">
-						{{ formatDistance(measureState.distance) }}
+						{{ formatDistance(measureState.total) }}
 					</span>
 				</div>
 			</div>
 
 			<div class="viewport-tools__popup-footer">
-				<n-button size="tiny" :disabled="!measureState.point1" @click.stop="resetDistanceMeasure">
-					<template #icon>
-						<n-icon>
-							<RefreshOutline />
-						</n-icon>
-					</template>
-					{{ t("layout.scene.tools.Reset") }}
-				</n-button>
-				<span class="viewport-tools__hint">{{ t("layout.scene.tools['Click map to pick']") }}</span>
+				<div class="viewport-tools__actions">
+					<n-button size="tiny" :disabled="measureState.points.length === 0" @click.stop="resetDistanceMeasure">
+						<template #icon>
+							<n-icon>
+								<RefreshOutline />
+							</n-icon>
+						</template>
+						{{ t("layout.scene.tools.Reset") }}
+					</n-button>
+					<n-button
+						size="tiny"
+						type="primary"
+						:disabled="!canFinishDistance"
+						@click.stop="finishDistanceMeasure"
+					>
+						<template #icon>
+							<n-icon>
+								<CheckmarkOutline />
+							</n-icon>
+						</template>
+						{{ t("layout.scene.tools.Finish") }}
+					</n-button>
+				</div>
+				<span class="viewport-tools__hint">
+					{{
+						measureState.picking
+							? t("layout.scene.tools['Click map to pick multi']")
+							: t("layout.scene.tools['Measure finished']")
+					}}
+				</span>
 			</div>
 		</div>
 
-		<!-- 工具图标：与顶部圆钮同风格，仅图标着色为主题色 -->
 		<div class="viewport-tools__rail" @pointerdown.stop @click.stop>
 			<n-tooltip placement="left" trigger="hover">
 				<template #trigger>
-					<n-button circle size="tiny" class="viewport-tools__btn"
-						:class="{ 'is-active': activeTool === 'distance' }" @click.stop="onToolClick('distance')">
+					<n-button
+						circle
+						size="tiny"
+						class="viewport-tools__btn"
+						:class="{ 'is-active': activeTool === 'distance' }"
+						@click.stop="onToolClick('distance')"
+					>
 						<template #icon>
 							<n-icon :size="10" :color="iconColor">
 								<Ruler />
@@ -170,8 +218,13 @@ onBeforeUnmount(() => {
 			</n-tooltip>
 			<n-tooltip placement="left" trigger="hover">
 				<template #trigger>
-					<n-button circle size="tiny" class="viewport-tools__btn"
-						:class="{ 'is-active': activeTool === 'area' }" @click.stop="onToolClick('area')">
+					<n-button
+						circle
+						size="tiny"
+						class="viewport-tools__btn"
+						:class="{ 'is-active': activeTool === 'area' }"
+						@click.stop="onToolClick('area')"
+					>
 						<template #icon>
 							<n-icon :size="10" :color="iconColor">
 								<AreaCustom />
@@ -224,7 +277,10 @@ onBeforeUnmount(() => {
 	position: absolute;
 	top: 0;
 	right: calc(100% + 4px);
-	width: 248px;
+	width: 268px;
+	max-height: min(420px, 70vh);
+	display: flex;
+	flex-direction: column;
 	pointer-events: auto;
 	border-radius: 8px;
 	border: 1px solid;
@@ -240,6 +296,7 @@ onBeforeUnmount(() => {
 	border-bottom: 1px solid var(--n-divider-color, rgba(0, 0, 0, 0.09));
 	font-size: 12px;
 	font-weight: 600;
+	flex-shrink: 0;
 }
 
 .viewport-tools__popup-body {
@@ -247,6 +304,14 @@ onBeforeUnmount(() => {
 	flex-direction: column;
 	gap: 8px;
 	padding: 10px;
+	overflow-y: auto;
+	min-height: 0;
+}
+
+.viewport-tools__empty {
+	font-size: 12px;
+	opacity: 0.5;
+	padding: 4px 0;
 }
 
 .viewport-tools__row {
@@ -275,15 +340,22 @@ onBeforeUnmount(() => {
 
 .viewport-tools__popup-footer {
 	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
+	flex-direction: column;
+	gap: 6px;
 	padding: 8px 10px 10px;
 	border-top: 1px solid var(--n-divider-color, rgba(0, 0, 0, 0.09));
+	flex-shrink: 0;
+}
+
+.viewport-tools__actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
 }
 
 .viewport-tools__hint {
 	font-size: 11px;
 	opacity: 0.5;
+	line-height: 1.35;
 }
 </style>

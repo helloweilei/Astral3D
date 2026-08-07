@@ -5,19 +5,28 @@ const DEFAULT_OPTIONS: {
 	strokeColor: THREE.Color;
 	radius: number;
 	strokeWidth: number;
+	/**
+	 * `ground`：平面贴在 XZ（俯视圆、斜视成椭圆）；
+	 * `billboard`：平面在 XY，由调用方每帧对齐相机，始终显示为圆。
+	 */
+	align: "ground" | "billboard";
 } = {
 	innerColor: new THREE.Color(0xffffff),
 	strokeColor: new THREE.Color(0xe63c17),
 	radius: 4,
 	strokeWidth: 4,
+	align: "ground",
 };
-export function createCircleMesh(options: Partial<typeof DEFAULT_OPTIONS> = {}) {
-	const { innerColor, strokeColor, radius, strokeWidth } = { ...DEFAULT_OPTIONS, ...options };
-	const geometry = new THREE.PlaneGeometry(1, 1);
-	geometry.rotateX(Math.PI / 2);
-	const totalRadius = radius + strokeWidth;
 
-	// 2. 定义着色器材质
+export function createCircleMesh(options: Partial<typeof DEFAULT_OPTIONS> = {}) {
+	const { innerColor, strokeColor, radius, strokeWidth, align } = { ...DEFAULT_OPTIONS, ...options };
+	const geometry = new THREE.PlaneGeometry(1, 1);
+	// 贴地：转到水平面；billboard 保持 XY，正面朝向由外部 quaternion 控制
+	if (align === "ground") {
+		geometry.rotateX(Math.PI / 2);
+	}
+	const totalRadius = Math.max(radius + strokeWidth, 1e-6);
+
 	const material = new THREE.ShaderMaterial({
 		uniforms: {
 			innerColor: { value: innerColor },
@@ -40,31 +49,24 @@ export function createCircleMesh(options: Partial<typeof DEFAULT_OPTIONS> = {}) 
         varying vec2 vUv;
 
         void main() {
-            // 计算当前像素到中心点 (0.5, 0.5) 的距离
             float d = distance(vUv, vec2(0.5));
             float outerRadius = radius + strokeWidth;
 
-            // 如果在圆内，显示填充色
             if (d <= radius) {
                 gl_FragColor = vec4(innerColor, 1.0);
-            }
-            // 如果在描边区域内，显示描边色
-            else if (d <= outerRadius) {
+            } else if (d <= outerRadius) {
                 gl_FragColor = vec4(strokeColor, 1.0);
-            }
-            // 否则，丢弃该片段（透明）
-            else {
+            } else {
                 discard;
             }
         }
     `,
-		transparent: true, // 开启透明，让圆外部分透明
+		transparent: true,
 		side: THREE.DoubleSide,
 		depthTest: false,
 		depthWrite: false,
 	});
 
-	// 3. 创建网格并添加到场景
 	const circle = new THREE.Mesh(geometry, material);
 	circle.position.set(0, 0, 0);
 	return circle;
