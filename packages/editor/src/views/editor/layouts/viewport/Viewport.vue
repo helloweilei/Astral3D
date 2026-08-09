@@ -5,6 +5,7 @@
     <div id="viewport" ref="viewportRef" class="absolute top-0 left-0 w-full h-full"
       @pointerdown="handleViewportPointerdown">
       <ViewportInfo />
+      <ViewportMiniMap />
     </div>
 
     <!-- 右侧叠放：指南针与工具条垂直居中对齐，置于 viewport 外避免被 canvas 截获点击 -->
@@ -29,6 +30,7 @@ import { useGlobalConfigStore } from "@/store/modules/globalConfig";
 import { usePluginStore } from "@/store/modules/plugin";
 import { installBuiltinPlugin } from "@/plugin";
 import ViewportInfo from "./ViewportInfo.vue";
+import ViewportMiniMap from "./ViewportMiniMap.vue";
 import ViewportCompass from "./ViewportCompass.vue";
 import ViewportTools from "./ViewportTools.vue";
 import BIMProperties from "./BIMProperties.vue";

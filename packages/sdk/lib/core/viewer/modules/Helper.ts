@@ -3,169 +3,172 @@ import CameraControls from "camera-controls";
 import { useAddSignal, useRemoveSignal } from "@/hooks";
 import App from "@/core/app/App";
 import Viewer from "../Viewer";
-import {getOsTheme} from "@/utils";
+import { getOsTheme } from "@/utils";
 
 let _updateFn;
 export class Helper {
-    private viewer: Viewer;
-    private gizmo: ViewportGizmo | undefined;
-    private controls: CameraControls;
+	private viewer: Viewer;
+	private gizmo: ViewportGizmo | undefined;
+	private controls: CameraControls;
 
-    constructor(viewer: Viewer, controls: CameraControls) {
-        this.viewer = viewer;
-        this.controls = controls;
-    }
+	constructor(viewer: Viewer, controls: CameraControls) {
+		this.viewer = viewer;
+		this.controls = controls;
+	}
 
-    /**
-     * 如果当前正在动画视图更改,则返回true
-     */
-    get animating() {
-        if (this.gizmo) {
-            return this.gizmo.animating;
-        }
+	/**
+	 * 如果当前正在动画视图更改,则返回true
+	 */
+	get animating() {
+		if (this.gizmo) {
+			return this.gizmo.animating;
+		}
 
-        return false;
-    }
+		return false;
+	}
 
-    set hidden(value: boolean) {
-        if (this.gizmo) {
-            const dom = document.querySelector(`#${this.gizmo.options.id}`) as HTMLElement;
-            if (!dom) return;
-            dom.style.display = value ? "block" : "none";
+	set hidden(value: boolean) {
+		if (this.gizmo) {
+			const dom = document.querySelector(`#${this.gizmo.options.id}`) as HTMLElement;
+			if (!dom) return;
+			dom.style.display = value ? "block" : "none";
 
-            this.update();
-        }
-    }
+			this.update();
+		}
+	}
 
-    init() {
-        _updateFn = this.update.bind(this);
-        useAddSignal('cameraChanged', _updateFn);
-        useAddSignal('sceneResize', _updateFn);
+	init() {
+		_updateFn = this.update.bind(this);
+		useAddSignal("cameraChanged", _updateFn);
+		useAddSignal("sceneResize", _updateFn);
 
-        if (!this.viewer.renderer) return;
+		if (!this.viewer.renderer) return;
 
-        this.gizmo = new ViewportGizmo(this.viewer.camera, this.viewer.renderer, this.getGizmoConfig());
-        this.controls.getTarget(this.gizmo.target);
+		this.gizmo = new ViewportGizmo(this.viewer.camera, this.viewer.renderer, this.getGizmoConfig());
+		this.controls.getTarget(this.gizmo.target);
 
-        this.initEvent();
-    }
+		this.initEvent();
+	}
 
-    /**
-     * 初始化视角控制器事件
-     */
-    initEvent() {
-        if (!this.gizmo) return;
+	/**
+	 * 初始化视角控制器事件
+	 */
+	initEvent() {
+		if (!this.gizmo) return;
 
-        this.gizmo.addEventListener("start", () => {
-            this.controls.enabled = false;
-            this.viewer.render();
-        });
-        this.gizmo.addEventListener("end", () => {
-            this.controls.enabled = true;
-            this.viewer.render();
-        });
-        this.gizmo.addEventListener("change", () => {
-            this.controls.setPosition(...this.viewer.camera.position.toArray());
-            this.viewer.render();
-        });
+		this.gizmo.addEventListener("start", () => {
+			this.controls.enabled = false;
+			this.viewer.render();
+		});
+		this.gizmo.addEventListener("end", () => {
+			this.controls.enabled = true;
+			this.viewer.render();
+		});
+		this.gizmo.addEventListener("change", () => {
+			this.controls.setPosition(...this.viewer.camera.position.toArray());
+			this.viewer.render();
+		});
 
-        this.initDomEvent();
-    }
+		this.initDomEvent();
+	}
 
-    /**
-     * 初始化视角控制器dom事件
-     */
-    initDomEvent() {
-        if (!this.gizmo?.options?.id) return;
+	/**
+	 * 初始化视角控制器dom事件
+	 */
+	initDomEvent() {
+		if (!this.gizmo?.options?.id) return;
 
-        const dom = document.querySelector(`#${this.gizmo.options.id}`);
-        if (!dom) return;
+		const dom = document.querySelector(`#${this.gizmo.options.id}`);
+		if (!dom) return;
 
-        dom.addEventListener("pointermove", () => {
-            this.viewer.render();
-        })
-    }
+		dom.addEventListener("pointermove", () => {
+			this.viewer.render();
+		});
+	}
 
-    /**
-     * 获取ViewportGizmo配置
-     * @param type
-     */
-    getGizmoConfig(type = "cube") {
-        const _opt = {
-            type,
-            id: "astral-viewer-helper",
-            container: this.viewer.container,
-            placement: "bottom-right",
-        } as GizmoOptions;
+	/**
+	 * 获取ViewportGizmo配置
+	 * @param type
+	 */
+	getGizmoConfig(type = "cube") {
+		// 右下角留给小地图；方位立方体缩小一半放在左下角统计文字上方
+		const _opt = {
+			type,
+			id: "astral-viewer-helper",
+			container: this.viewer.container,
+			placement: "bottom-left",
+			size: 92,
+			offset: { left: 10, bottom: 34 },
+		} as GizmoOptions;
 
-        if (type === "sphere") return _opt;
+		if (type === "sphere") return _opt;
 
-        const configTheme = App.config.getKey('theme');
-        if (configTheme === "os") {
-            if (getOsTheme() !== "dark") {
-                return _opt;
-            }
-        } else if (configTheme === "light") {
-            return _opt;
-        }
+		const configTheme = App.config.getKey("theme");
+		if (configTheme === "os") {
+			if (getOsTheme() !== "dark") {
+				return _opt;
+			}
+		} else if (configTheme === "light") {
+			return _opt;
+		}
 
-        let colors = {
-            color: 0x333333,
-            labelColor: 0xdddddd,
-            hover: {
-                color: App.config.getKey('mainColor') || "#7FE7C4",
-                labelColor: 0xffffff,
-            },
-        };
-        let background = {
-            color: 0x444444,
-            hover: { color: 0x444444 },
-        };
+		let colors = {
+			color: 0x333333,
+			labelColor: 0xdddddd,
+			hover: {
+				color: App.config.getKey("mainColor") || "#7FE7C4",
+				labelColor: 0xffffff,
+			},
+		};
+		let background = {
+			color: 0x444444,
+			hover: { color: 0x444444 },
+		};
 
-        return {
-            ..._opt,
-            background: background,
-            corners: colors,
-            edges: colors,
-            right: colors,
-            top: colors,
-            front: colors,
-        } as GizmoOptions;
-    }
+		return {
+			..._opt,
+			background: background,
+			corners: colors,
+			edges: colors,
+			right: colors,
+			top: colors,
+			front: colors,
+		} as GizmoOptions;
+	}
 
-    /**
-     * 设置外观，会在全局配置中的主色调及白天/黑夜模式切换时调用
-     */
-    setConfig() {
-        if (!this.gizmo) return;
+	/**
+	 * 设置外观，会在全局配置中的主色调及白天/黑夜模式切换时调用
+	 */
+	setConfig() {
+		if (!this.gizmo) return;
 
-        this.gizmo.set(this.getGizmoConfig());
+		this.gizmo.set(this.getGizmoConfig());
 
-        this.initDomEvent();
+		this.initDomEvent();
 
-        this.viewer.render();
-    }
+		this.viewer.render();
+	}
 
-    update() {
-        if (!this.gizmo) return;
+	update() {
+		if (!this.gizmo) return;
 
-        this.controls.getTarget(this.gizmo.target);
-        this.gizmo.update(false);
-    }
+		this.controls.getTarget(this.gizmo.target);
+		this.gizmo.update(false);
+	}
 
-    render() {
-        if (!this.gizmo) return;
+	render() {
+		if (!this.gizmo) return;
 
-        this.gizmo.render();
-    }
+		this.gizmo.render();
+	}
 
-    dispose() {
-        if (this.gizmo) this.gizmo.dispose();
+	dispose() {
+		if (this.gizmo) this.gizmo.dispose();
 
-        if(_updateFn){
-            useRemoveSignal('cameraChanged', _updateFn);
-            useRemoveSignal('sceneResize', _updateFn);
-            _updateFn = null;
-        }
-    }
+		if (_updateFn) {
+			useRemoveSignal("cameraChanged", _updateFn);
+			useRemoveSignal("sceneResize", _updateFn);
+			_updateFn = null;
+		}
+	}
 }

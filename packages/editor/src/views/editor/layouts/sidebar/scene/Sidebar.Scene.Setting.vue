@@ -43,6 +43,18 @@
     <n-form-item :label="t('layout.sider.sceneConfig.Helpers')">
       <n-switch size="small" v-model:value="helpers" @update:value="handleShowHelpers" />
     </n-form-item>
+    <!-- 小地图 -->
+    <n-form-item :label="miniMapLabel">
+      <n-switch size="small" v-model:value="miniMap" @update:value="handleMiniMapChange" />
+    </n-form-item>
+    <n-form-item v-if="miniMap" :label="t('layout.sider.sceneConfig.MiniMapSize')">
+      <EsInputNumber v-model:value="miniMapSize" class="w-60% ml-5px" size="tiny" :show-button="false" :min="10"
+        :max="Infinity" :decimal="0" @change="handleMiniMapChange" />
+    </n-form-item>
+    <n-form-item v-if="miniMap" :label="t('layout.sider.sceneConfig.MiniMapRenderSize')">
+      <EsInputNumber v-model:value="miniMapRenderSize" class="w-60% ml-5px" size="tiny" :show-button="false" :min="10"
+        :max="Infinity" :decimal="0" @change="handleMiniMapChange" />
+    </n-form-item>
   </n-form>
 </template>
 
@@ -69,6 +81,11 @@ const environmentTexture = ref()
 const grid = ref(true);
 // 辅助
 const helpers = ref(true);
+// 小地图（项目配置 viewport.miniMap）
+const miniMap = ref(false);
+const miniMapLabel = t("layout.sider.sceneConfig['Mini map']");
+const miniMapSize = ref(240);
+const miniMapRenderSize = ref(120);
 
 onMounted(async () => {
   await nextTick();
@@ -76,15 +93,27 @@ onMounted(async () => {
 
   Hooks.useAddSignal("sceneCleared", refreshUI);
   Hooks.useAddSignal("sceneGraphChanged", refreshUI);
+  Hooks.useAddSignal("viewportSettingsChanged", syncMiniMapFromProject);
 })
 
 onBeforeUnmount(() => {
   Hooks.useRemoveSignal("sceneCleared", refreshUI);
   Hooks.useRemoveSignal("sceneGraphChanged", refreshUI);
+  Hooks.useRemoveSignal("viewportSettingsChanged", syncMiniMapFromProject);
 })
+
+function syncMiniMapFromProject() {
+  if (App.project.getKey("viewport") == null) {
+    App.project.setKey("viewport", { miniMap: true, miniMapSize: 240, miniMapRenderSize: 120 }, false);
+  }
+  miniMap.value = !!App.project.getKey("viewport.miniMap");
+  miniMapSize.value = App.project.getKey("viewport.miniMapSize") ?? 240;
+  miniMapRenderSize.value = App.project.getKey("viewport.miniMapRenderSize") ?? 120;
+}
 
 // 更新树及背景/环境
 function refreshUI() {
+  syncMiniMapFromProject();
   const scene = App.scene;
 
   //背景
@@ -163,5 +192,9 @@ function handleGridToggle() {
       }
     }
   }
+}
+
+function handleMiniMapChange() {
+  App.project.setKey("viewport", { miniMap: miniMap.value, miniMapSize: miniMapSize.value, miniMapRenderSize: miniMapRenderSize.value }, true);
 }
 </script>

@@ -16,10 +16,6 @@ function handlePostAnimationLoop(e) {
     window.viewer.modules.controls.azimuthAngle += operationStore.autoRotateSpeed * e.delta * MathUtils.DEG2RAD;
   }
 
-  if (operationStore.menuList.miniMap.active) {
-    MenuOperation.MiniMap.update();
-  }
-
   if (operationStore.menuList.roaming.active) {
     if (MenuOperation.Roaming.isRoaming) {
       e.toBeRender(true);

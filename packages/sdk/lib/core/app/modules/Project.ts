@@ -169,6 +169,12 @@ export const defaultProjectInfo = (): IAppProject.Info => ({
 			alpha: 0.5,
 		},
 	},
+	// 视口 UI
+	viewport: {
+		miniMap: true,
+		miniMapSize: 240,
+		miniMapRenderSize: 120,
+	},
 	// 地形
 	terrain: {
 		enabled: false,
@@ -386,6 +392,8 @@ class Project {
 			}
 		} else if (key.startsWith("terrain")) {
 			useDispatchSignal("sceneTerrainSettingsChanged");
+		} else if (key.startsWith("viewport")) {
+			useDispatchSignal("viewportSettingsChanged");
 		}
 	}
 

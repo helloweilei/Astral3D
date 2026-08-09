@@ -215,6 +215,13 @@ declare namespace IAppProject {
 		imgInfo: DrawingImgInfo;
 	}
 
+	interface Viewport {
+		/** 是否显示视口小地图 */
+		miniMap: boolean;
+		miniMapSize: number;
+		miniMapRenderSize: number;
+	}
+
 	interface Config {
 		xr: boolean;
 		renderer: Renderer;
@@ -222,6 +229,7 @@ declare namespace IAppProject {
 		effect: Effect;
 		weather: Weather;
 		terrain: Terrain;
+		viewport: Viewport;
 	}
 
 	interface Info extends Config {

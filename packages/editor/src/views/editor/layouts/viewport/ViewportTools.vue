@@ -132,6 +132,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	Hooks.useRemoveSignal("sceneTerrainSettingsChanged", syncTerrainVisible);
 	distanceMeasureTool.dispose();
+	areaMeasureTool.dispose();
 });
 </script>
 

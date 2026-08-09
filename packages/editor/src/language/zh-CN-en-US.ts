@@ -382,6 +382,9 @@ export default {
 				Environment: "环境",
 				Grid: "网格",
 				Helpers: "辅助",
+				"Mini map": "小地图",
+				MiniMapSize: "小地图尺寸",
+				MiniMapRenderSize: "小地图渲染尺寸",
 			},
 			"Renderer config": "渲染器配置",
 			rendererConfig: {
