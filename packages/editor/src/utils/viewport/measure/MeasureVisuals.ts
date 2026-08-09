@@ -48,19 +48,78 @@ export function applyMeasureMarkerScale(marker: THREE.Object3D, camera: THREE.Ca
 	marker.scale.setScalar(Math.max(0.05, worldPerPixel * radiusPx));
 }
 
-export function createMeasureLine(points: THREE.Vector3[], material = MEASURE_LINE_MATERIAL): THREE.Line {
+export function createMeasureLine(points: THREE.Vector3[], material = MEASURE_LINE_MATERIAL, close = false): THREE.Line {
 	const geometry = new THREE.BufferGeometry().setFromPoints(points);
+	if (close && points.length > 2) {
+		geometry.setFromPoints([...points, points[0].clone()]);
+	}
 	const line = new THREE.Line(geometry, material.clone());
+	line.renderOrder = 998;
+	(line as any).ignore = true;
+	line.frustumCulled = false;
+
+	return line;
+}
+
+export function createMeasureLineSegments(points: THREE.Vector3[], material = MEASURE_LINE_MATERIAL): THREE.LineSegments {
+	const geometry = new THREE.EdgesGeometry(new THREE.BufferGeometry().setFromPoints(points));
+	const line = new THREE.LineSegments(geometry, material.clone());
 	line.renderOrder = 998;
 	(line as any).ignore = true;
 	line.frustumCulled = false;
 	return line;
 }
 
-export function setMeasureLinePoints(line: THREE.Line, points: THREE.Vector3[]) {
+/** 由多边形顶点构建可渲染 Mesh 几何（扇形三角剖分 + 索引） */
+function buildPolygonGeometry(points: THREE.Vector3[]): THREE.BufferGeometry {
+	const geometry = new THREE.BufferGeometry().setFromPoints(points);
+	if (points.length >= 3) {
+		const indexArray: number[] = [];
+		// 以第 0 点为公共顶点做扇形剖分（凸多边形可靠；与 SDK Measure 一致）
+		for (let i = 1; i < points.length - 1; ++i) {
+			indexArray.push(0, i, i + 1);
+		}
+		geometry.setIndex(indexArray);
+		geometry.computeVertexNormals();
+	}
+	return geometry;
+}
+
+export type MaterialProps = {
+	color?: number;
+	opacity?: number;
+};
+
+export function createMeasureArea(points: THREE.Vector3[], materialProps: MaterialProps = {}): THREE.Mesh {
+	const geometry = buildPolygonGeometry(points);
+	const material = new THREE.MeshBasicMaterial({
+		color: materialProps.color || MEASURE_ACCENT_COLOR,
+		transparent: true,
+		opacity: materialProps.opacity || 0.35,
+		side: THREE.DoubleSide,
+		depthTest: false,
+		depthWrite: false,
+	});
+	const mesh = new THREE.Mesh(geometry, material);
+	mesh.renderOrder = 997;
+	(mesh as any).ignore = true;
+	mesh.frustumCulled = false;
+	return mesh;
+}
+
+export function setMeasureLinePoints(line: THREE.Line, points: THREE.Vector3[], close = false) {
 	// 点数变化时必须换新 BufferGeometry，仅改 needsUpdate 无法扩展 draw 范围
 	const prev = line.geometry;
+	if (close && points.length > 2) {
+		points.push(points[0].clone());
+	}
 	line.geometry = new THREE.BufferGeometry().setFromPoints(points);
+	prev.dispose();
+}
+
+export function setMeasureAreaPoints(mesh: THREE.Mesh, points: THREE.Vector3[]) {
+	const prev = mesh.geometry;
+	mesh.geometry = buildPolygonGeometry(points);
 	prev.dispose();
 }
 

@@ -325,7 +325,9 @@ export abstract class BaseMeasureTool {
 		}
 	};
 
-	private readonly flushPreview = () => {
+	abstract onFlushPreview(mouseMovePoint: THREE.Vector3): void;
+
+	protected readonly flushPreview = () => {
 		this.rafId = 0;
 		if (!this.picking || !this.canAddMorePoints()) return;
 
@@ -351,6 +353,7 @@ export abstract class BaseMeasureTool {
 		}
 
 		this.dirty = true;
+		this.onFlushPreview(point);
 	};
 
 	private readonly onPointerUp = (e: PointerEvent) => {

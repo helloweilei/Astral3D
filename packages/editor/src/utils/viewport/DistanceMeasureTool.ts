@@ -24,6 +24,8 @@ export class DistanceMeasureTool extends BaseMeasureTool {
 		return this.picking;
 	}
 
+	override onFlushPreview() {}
+
 	open(listener: DistanceMeasureListener) {
 		this.listener = listener;
 		this.beginSession();

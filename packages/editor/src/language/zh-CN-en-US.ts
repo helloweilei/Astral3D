@@ -217,6 +217,7 @@ export default {
 				"Click map to pick multi": "点击加点，双击或点「完成」结束",
 				"Measure finished": "测量已完成，可重置后重测",
 				Area: "测面积",
+				TotalArea: "总面积",
 			},
 		},
 		sider: {

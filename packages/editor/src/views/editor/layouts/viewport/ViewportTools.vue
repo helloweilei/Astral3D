@@ -10,6 +10,8 @@ import {
 	type DistanceMeasureState,
 	type MeasurePointInfo,
 } from "@/utils/viewport/DistanceMeasureTool";
+import { AreaMeasureTool } from "@/utils/viewport/AreaMeasureTool";
+import { AreaMeasureState } from "@/utils/viewport/measure/types";
 
 type ToolId = "distance" | "area";
 
@@ -25,7 +27,7 @@ const iconColor = computed(() => themeVars.value.primaryColor);
 const terrainEnabled = ref(false);
 
 const activeTool = ref<ToolId | null>(null);
-const measureState = ref<DistanceMeasureState>({
+const measureState = ref<DistanceMeasureState | AreaMeasureState>({
 	points: [],
 	segments: [],
 	total: null,
@@ -33,8 +35,11 @@ const measureState = ref<DistanceMeasureState>({
 });
 
 const distanceMeasureTool = new DistanceMeasureTool();
+const areaMeasureTool = new AreaMeasureTool();
 
 const showDistanceMeasurePopup = computed(() => terrainEnabled.value && activeTool.value === "distance");
+const showAreaMeasurePopup = computed(() => terrainEnabled.value && activeTool.value === "area");
+
 const canFinishDistance = computed(
 	() => measureState.value.picking && measureState.value.points.length >= 2
 );
@@ -55,46 +60,64 @@ function formatDistance(distance: number | null) {
 	return `${distance.toFixed(2)} m`;
 }
 
-function openDistance() {
-	if (activeTool.value === "distance") return;
+function formatArea(area?: number | null) {
+	if (area === undefined || area === null) return "-";
+	return `${area.toFixed(2)} m²`;
+}
+
+function openMeasure(id: ToolId) {
+	if (activeTool.value === id) return;
 
 	if (activeTool.value) {
-		closeActiveTool();
+		closeMeasure();
 	}
 
-	activeTool.value = "distance";
-	distanceMeasureTool.open(state => {
-		measureState.value = { ...state, points: [...state.points], segments: [...state.segments] };
-	});
+	activeTool.value = id;
+	if (id === "distance") {
+		distanceMeasureTool.open(state => {
+			measureState.value = { ...state, points: [...state.points], segments: [...state.segments] };
+		});
+	} else if (id === "area") {
+		areaMeasureTool.open(state => {
+			measureState.value = { ...state, points: [...state.points], area: state.area };
+		});
+	}
 }
 
-function resetDistanceMeasure() {
-	distanceMeasureTool.reset();
-}
-
-function finishDistanceMeasure() {
-	distanceMeasureTool.finishPicking();
-}
-
-function closeDistanceMeasure() {
-	distanceMeasureTool.close();
-	measureState.value = { points: [], segments: [], total: null, picking: false };
+function resetMeasure() {
 	if (activeTool.value === "distance") {
-		activeTool.value = null;
+		distanceMeasureTool.reset();
+	} else if (activeTool.value === "area") {
+		areaMeasureTool.reset();
 	}
 }
+
+function finishMeasure() {
+	if (activeTool.value === "distance") {
+		distanceMeasureTool.finishPicking();
+	} else if (activeTool.value === "area") {
+		areaMeasureTool.finishPicking();
+	}
+}
+
+function closeMeasure() {
+	if (activeTool.value === "distance") {
+		distanceMeasureTool.close();
+	} else if (activeTool.value === "area") {
+		areaMeasureTool.close();
+	}
+	measureState.value = { points: [], segments: [], total: null, picking: false };
+	activeTool.value = null;
+}
+
 
 function closeActiveTool() {
-	if (activeTool.value === "distance") {
-		closeDistanceMeasure();
-	}
+	closeMeasure();
 }
 
 function onToolClick(id: ToolId) {
 	if (activeTool.value === id) return;
-	if (id === "distance") {
-		openDistance();
-	}
+	openMeasure(id);
 }
 
 watch(terrainEnabled, enabled => {
@@ -114,22 +137,12 @@ onBeforeUnmount(() => {
 
 <template>
 	<div v-if="terrainEnabled" class="viewport-tools">
-		<div
-			v-if="showDistanceMeasurePopup"
-			class="viewport-tools__popup"
-			:style="popupStyle"
-			@pointerdown.stop
-			@click.stop
-		>
+		<div v-if="showDistanceMeasurePopup" class="viewport-tools__popup" :style="popupStyle" @pointerdown.stop
+			@click.stop>
 			<div class="viewport-tools__popup-header">
 				<span>{{ t("layout.scene.tools.Distance") }}</span>
-				<n-button
-					quaternary
-					circle
-					size="tiny"
-					:title="t('layout.scene.tools.Close')"
-					@click.stop="closeDistanceMeasure"
-				>
+				<n-button quaternary circle size="tiny" :title="t('layout.scene.tools.Close')"
+					@click.stop="closeMeasure">
 					<template #icon>
 						<n-icon :size="12">
 							<CloseOutline />
@@ -142,30 +155,27 @@ onBeforeUnmount(() => {
 				<div v-if="measureState.points.length === 0" class="viewport-tools__empty">
 					{{ t("layout.scene.tools['No Points']") }}
 				</div>
-				<div
-					v-for="(point, index) in measureState.points"
-					:key="index"
-					class="viewport-tools__row"
-				>
+				<div v-for="(point, index) in measureState.points" :key="index" class="viewport-tools__row">
 					<span class="viewport-tools__label">
 						{{ t("layout.scene.tools.Point") }} {{ index + 1 }}
-						<template v-if="index > 0 && measureState.segments[index - 1] !== undefined">
-							· {{ formatDistance(measureState.segments[index - 1]) }}
+						<template
+							v-if="index > 0 && (measureState as DistanceMeasureState).segments[index - 1] !== undefined">
+							· {{ formatDistance((measureState as DistanceMeasureState).segments[index - 1]) }}
 						</template>
 					</span>
 					<span class="viewport-tools__value">{{ formatPoint(point) }}</span>
 				</div>
-				<div v-if="measureState.total !== null" class="viewport-tools__row">
+				<div v-if="(measureState as DistanceMeasureState).total !== null" class="viewport-tools__row">
 					<span class="viewport-tools__label">{{ t("layout.scene.tools['Total Distance']") }}</span>
 					<span class="viewport-tools__value viewport-tools__value--accent" :style="{ color: iconColor }">
-						{{ formatDistance(measureState.total) }}
+						{{ formatDistance((measureState as DistanceMeasureState).total) }}
 					</span>
 				</div>
 			</div>
 
 			<div class="viewport-tools__popup-footer">
 				<div class="viewport-tools__actions">
-					<n-button size="tiny" :disabled="measureState.points.length === 0" @click.stop="resetDistanceMeasure">
+					<n-button size="tiny" :disabled="measureState.points.length === 0" @click.stop="resetMeasure">
 						<template #icon>
 							<n-icon>
 								<RefreshOutline />
@@ -173,12 +183,79 @@ onBeforeUnmount(() => {
 						</template>
 						{{ t("layout.scene.tools.Reset") }}
 					</n-button>
-					<n-button
-						size="tiny"
-						type="primary"
-						:disabled="!canFinishDistance"
-						@click.stop="finishDistanceMeasure"
-					>
+					<n-button size="tiny" type="primary" :disabled="!canFinishDistance" @click.stop="finishMeasure">
+						<template #icon>
+							<n-icon>
+								<CheckmarkOutline />
+							</n-icon>
+						</template>
+						{{ t("layout.scene.tools.Finish") }}
+					</n-button>
+				</div>
+				<span class="viewport-tools__hint">
+					{{
+						measureState.picking
+							? t("layout.scene.tools['Click map to pick multi']")
+							: t("layout.scene.tools['Measure finished']")
+					}}
+				</span>
+			</div>
+		</div>
+		<div v-if="showAreaMeasurePopup" class="viewport-tools__popup area" :style="popupStyle" @pointerdown.stop
+			@click.stop>
+			<div class="viewport-tools__popup-header">
+				<span>{{ t("layout.scene.tools.Area") }}</span>
+				<n-button quaternary circle size="tiny" :title="t('layout.scene.tools.Close')"
+					@click.stop="closeMeasure">
+					<template #icon>
+						<n-icon :size="12">
+							<CloseOutline />
+						</n-icon>
+					</template>
+				</n-button>
+			</div>
+
+			<div class="viewport-tools__popup-body">
+				<div v-if="measureState.points.length === 0" class="viewport-tools__empty">
+					{{ t("layout.scene.tools['No Points']") }}
+				</div>
+				<div v-else>
+					<n-table>
+						<thead>
+							<tr>
+								<th>Longitude</th>
+								<th>Latitude</th>
+								<th>Altitude</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr v-for="(point, index) in measureState.points" :key="index">
+								<td>{{ point.longitude }}</td>
+								<td>{{ point.latitude }}</td>
+								<td>{{ point.height }}</td>
+							</tr>
+						</tbody>
+					</n-table>
+					<div class="viewport-tools__row">
+						<span class="viewport-tools__label">{{ t("layout.scene.tools['TotalArea']") }}</span>
+						<span class="viewport-tools__value viewport-tools__value--accent" :style="{ color: iconColor }">
+							{{ formatArea((measureState as AreaMeasureState).area) }}
+						</span>
+					</div>
+				</div>
+			</div>
+
+			<div class="viewport-tools__popup-footer">
+				<div class="viewport-tools__actions">
+					<n-button size="tiny" :disabled="measureState.points.length === 0" @click.stop="resetMeasure">
+						<template #icon>
+							<n-icon>
+								<RefreshOutline />
+							</n-icon>
+						</template>
+						{{ t("layout.scene.tools.Reset") }}
+					</n-button>
+					<n-button size="tiny" type="primary" :disabled="!canFinishDistance" @click.stop="finishMeasure">
 						<template #icon>
 							<n-icon>
 								<CheckmarkOutline />
@@ -200,13 +277,8 @@ onBeforeUnmount(() => {
 		<div class="viewport-tools__rail" @pointerdown.stop @click.stop>
 			<n-tooltip placement="left" trigger="hover">
 				<template #trigger>
-					<n-button
-						circle
-						size="tiny"
-						class="viewport-tools__btn"
-						:class="{ 'is-active': activeTool === 'distance' }"
-						@click.stop="onToolClick('distance')"
-					>
+					<n-button circle size="tiny" class="viewport-tools__btn"
+						:class="{ 'is-active': activeTool === 'distance' }" @click.stop="onToolClick('distance')">
 						<template #icon>
 							<n-icon :size="10" :color="iconColor">
 								<Ruler />
@@ -218,13 +290,8 @@ onBeforeUnmount(() => {
 			</n-tooltip>
 			<n-tooltip placement="left" trigger="hover">
 				<template #trigger>
-					<n-button
-						circle
-						size="tiny"
-						class="viewport-tools__btn"
-						:class="{ 'is-active': activeTool === 'area' }"
-						@click.stop="onToolClick('area')"
-					>
+					<n-button circle size="tiny" class="viewport-tools__btn"
+						:class="{ 'is-active': activeTool === 'area' }" @click.stop="onToolClick('area')">
 						<template #icon>
 							<n-icon :size="10" :color="iconColor">
 								<AreaCustom />
@@ -286,6 +353,10 @@ onBeforeUnmount(() => {
 	border: 1px solid;
 	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 	overflow: hidden;
+
+	&.area {
+		width: 300px;
+	}
 }
 
 .viewport-tools__popup-header {
