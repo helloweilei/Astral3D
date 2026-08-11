@@ -63,10 +63,12 @@ export default class Rain {
 
 		const material = new THREE.ShaderMaterial({
 			transparent: true,
+			depthTest: false,
+			depthWrite: false,
+			blending: THREE.AdditiveBlending,
+			side: THREE.DoubleSide,
 			uniforms: uniforms,
-			side: 2,
 			vertexShader: `
-                #define GLSLIFY 1
                 varying vec2 vUv;
                 void main() {
                     vUv = uv;
@@ -74,7 +76,6 @@ export default class Rain {
                 }
             `,
 			fragmentShader: `
-                uniform sampler2D tDiffuse;
                 uniform vec2 u_resolution;
                 uniform float u_time;
                 uniform float speed;
@@ -91,27 +92,31 @@ export default class Rain {
                     vec2 i = floor( p );
                     vec2 f = fract( p );
                     vec2 u = f*f*(3.0-2.0*f);
-                    return mix( mix( hash( i + vec2(0.0,0.0) ), 
+                    return mix( mix( hash( i + vec2(0.0,0.0) ),
                             hash( i + vec2(1.0,0.0) ), u.x),
-                        mix( hash( i + vec2(0.0,1.0) ), 
+                        mix( hash( i + vec2(0.0,1.0) ),
                             hash( i + vec2(1.0,1.0) ), u.x), u.y);
                 }
-            
+
                 void main(){
-                    vec3 col=texture(tDiffuse,vUv).rgb;
-                    vec2 q = gl_FragCoord.xy/u_resolution.xy;
-                    vec2 p = -1.0+2.0*q;
-                    vec2 st =  (p * vec2(.5, .01)+vec2(u_time)*0.05*speed)-vec2(q.y*cos(radian),0.0);
-                    st*= (1000.0 - size * 500.0);
-                    float f = noise(st) * noise(st*.773)* 1.55;
-                    f = clamp(pow(abs(f), 23.0) * 13.0, 0.0, q.y*.14) * 2.7;
-                    col += clamp(f,0.0,1.0)*color;
-                    gl_FragColor = vec4(col, alpha);
+                    vec2 q = gl_FragCoord.xy / u_resolution.xy;
+                    vec2 p = -1.0 + 2.0 * q;
+                    vec2 st = (p * vec2(.5, .01) + vec2(u_time) * 0.05 * speed) - vec2(q.y * cos(radian), 0.0);
+                    st *= (1000.0 - size * 500.0);
+                    float f = noise(st) * noise(st * .773) * 1.55;
+                    f = clamp(pow(abs(f), 23.0) * 13.0, 0.0, q.y * .14) * 2.7;
+                    float intensity = clamp(f, 0.0, 1.0);
+                    // 仅雨丝处有颜色，空白处完全透明，避免全屏黑幕遮挡场景/云层
+                    if (intensity < 0.001) discard;
+                    gl_FragColor = vec4(color * intensity * alpha, 1.0);
                 }
         `,
 		});
 
-		return new THREE.Mesh(geometry, material);
+		const mesh = new THREE.Mesh(geometry, material);
+		mesh.renderOrder = 999;
+		mesh.frustumCulled = false;
+		return mesh;
 	}
 
 	updatePosition() {
@@ -119,7 +124,6 @@ export default class Rain {
 			const position = this.controls.getPosition(new THREE.Vector3());
 			const center = this.controls.getTarget(new THREE.Vector3());
 			this.mesh.position.copy(center);
-			console.log(position);
 			if (position.y < 100) {
 				this.mesh.position.y = -100;
 			} else {

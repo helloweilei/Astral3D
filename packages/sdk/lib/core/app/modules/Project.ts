@@ -168,6 +168,16 @@ export const defaultProjectInfo = (): IAppProject.Info => ({
 			speed: 1.0,
 			alpha: 0.5,
 		},
+		clouds: {
+			enabled: false,
+			color: "#666666",
+			thickness: 0.55,
+			height: 180,
+			speed: 1,
+			density: 1,
+			alpha: 0.75,
+			scale: 1.0,
+		},
 	},
 	// 视口 UI
 	viewport: {
@@ -388,6 +398,9 @@ class Project {
 					break;
 				case "weather.lightning":
 					useDispatchSignal("sceneLightningSettingsChanged");
+					break;
+				case "weather.clouds":
+					useDispatchSignal("sceneCloudSettingsChanged");
 					break;
 			}
 		} else if (key.startsWith("terrain")) {

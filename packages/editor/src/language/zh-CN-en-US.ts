@@ -471,6 +471,10 @@ export default {
 				Snow: "雪",
 				Accumulation: "堆积",
 				Lightning: "闪电",
+				Clouds: "云层",
+				Thickness: "厚度",
+				Height: "高度",
+				Scale: "尺度",
 			},
 			History: "历史记录",
 			history: {

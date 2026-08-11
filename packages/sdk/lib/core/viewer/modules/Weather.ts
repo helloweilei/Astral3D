@@ -9,6 +9,7 @@ import { useAddSignal, useRemoveSignal } from "@/hooks";
 import Rain from "@/core/objects/weather/Rain";
 import Snow from "@/core/objects/weather/Snow";
 import Lightning from "@/core/objects/weather/Lighting";
+import Clouds from "@/core/objects/weather/Clouds";
 import { SnowingShaderMaterial } from "@/core/shaderMaterial/modules/SnowingShaderMaterial";
 import Viewer from "../Viewer";
 import App from "@/core/app/App";
@@ -18,6 +19,7 @@ let _rainConfigChangeFn: any = null;
 let _snowConfigChangeFn: any = null;
 let _objectAddedFn: any = null;
 let _lightningConfigChangeFn: any = null;
+let _cloudsConfigChangeFn: any = null;
 
 export class Weather {
 	private viewer: Viewer;
@@ -25,6 +27,7 @@ export class Weather {
 	snow: Snow | null = null;
 	snowingMaterialObj: THREE.Mesh[] = [];
 	lightning: Lightning | null = null;
+	clouds: Clouds | null = null;
 
 	constructor(viewer: Viewer) {
 		this.viewer = viewer;
@@ -40,6 +43,9 @@ export class Weather {
 
 		_lightningConfigChangeFn = this.sceneLightningSettingsChanged.bind(this);
 		useAddSignal("sceneLightningSettingsChanged", _lightningConfigChangeFn);
+
+		_cloudsConfigChangeFn = this.sceneCloudSettingsChanged.bind(this);
+		useAddSignal("sceneCloudSettingsChanged", _cloudsConfigChangeFn);
 
 		_objectAddedFn = this.objectAdded.bind(this);
 		useAddSignal("objectAdded", _objectAddedFn);
@@ -296,6 +302,30 @@ export class Weather {
 		}
 	}
 
+	sceneCloudSettingsChanged() {
+		const clouds = App.project.getKey("weather.clouds");
+		if (!clouds) return;
+
+		const { enabled, color, thickness, height, speed, density, alpha, scale } = clouds;
+
+		if (enabled) {
+			const opts = { color, thickness, height, speed, density, alpha, scale };
+			if (this.clouds) {
+				this.clouds.updateOptions(opts);
+			} else {
+				this.clouds = new Clouds(opts, this.viewer.modules.controls);
+				this.clouds.mesh.ignore = true;
+				this.viewer.scene.add(this.clouds.mesh as THREE.Object3D);
+			}
+			this.viewer.render();
+		} else {
+			if (!this.clouds) return;
+			this.clouds.dispose();
+			this.clouds = null;
+			this.viewer.render();
+		}
+	}
+
 	/**
 	 * 更新天气效果
 	 * @param deltaTime
@@ -313,6 +343,11 @@ export class Weather {
 		if (this.lightning) {
 			this.lightning.update(deltaTime);
 
+			needRender = true;
+		}
+
+		if (this.clouds) {
+			this.clouds.update(deltaTime);
 			needRender = true;
 		}
 
@@ -348,9 +383,14 @@ export class Weather {
 		_snowConfigChangeFn = null;
 		useRemoveSignal("sceneLightningSettingsChanged", _lightningConfigChangeFn);
 		_lightningConfigChangeFn = null;
+		useRemoveSignal("sceneCloudSettingsChanged", _cloudsConfigChangeFn);
+		_cloudsConfigChangeFn = null;
+		useRemoveSignal("objectAdded", _objectAddedFn);
+		_objectAddedFn = null;
 
 		this.rain && this.rain.dispose();
 		this.snow && this.snow.dispose();
 		this.lightning && this.lightning.dispose();
+		this.clouds && this.clouds.dispose();
 	}
 }

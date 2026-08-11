@@ -45,6 +45,7 @@ const appSignals: SignalRegister = {
 	// 雪效果配置参数变更
 	sceneSnowSettingsChanged: new Signal(),
 	sceneLightningSettingsChanged: new Signal(),
+	sceneCloudSettingsChanged: new Signal(),
 	sceneTerrainSettingsChanged: new Signal(),
 	/** 视口 UI 配置变更（如小地图显隐） */
 	viewportSettingsChanged: new Signal(),

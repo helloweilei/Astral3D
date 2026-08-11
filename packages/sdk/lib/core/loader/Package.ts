@@ -753,6 +753,24 @@ export class Package {
 							});
 							useDispatchSignal("sceneLightningSettingsChanged");
 						}
+						if (configJson.weather.clouds) {
+							if (!projectWeather.clouds) {
+								projectWeather.clouds = {
+									enabled: false,
+									color: "#666666",
+									thickness: 0.55,
+									height: 180,
+									speed: 1,
+									density: 1,
+									alpha: 0.75,
+									scale: 1.0,
+								};
+							}
+							Object.keys(configJson.weather.clouds).forEach(key => {
+								projectWeather.clouds[key] = configJson.weather.clouds[key];
+							});
+							useDispatchSignal("sceneCloudSettingsChanged");
+						}
 					}
 
 					if (configJson.terrain) {

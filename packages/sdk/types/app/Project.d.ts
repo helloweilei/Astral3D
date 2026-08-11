@@ -174,6 +174,22 @@ declare namespace IAppProject {
 			speed: number;
 			alpha: number;
 		};
+		clouds: {
+			enabled: boolean;
+			color: string;
+			/** 云层厚度/浓度 0–1 */
+			thickness: number;
+			/** 云层高度（世界 Y） */
+			height: number;
+			/** 漂移速度 */
+			speed: number;
+			/** 覆盖密度 0–1 */
+			density: number;
+			/** 整体透明度 0–1 */
+			alpha: number;
+			/** 云朵尺度 */
+			scale: number;
+		};
 	}
 
 	interface SceneInfo {
