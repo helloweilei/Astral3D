@@ -14,6 +14,8 @@
       <ViewportTools />
     </div>
 
+    <ViewportRealtimeWeather />
+
     <!--  RVT BIM 构件信息悬浮框  -->
     <BIMProperties />
 
@@ -31,6 +33,7 @@ import { usePluginStore } from "@/store/modules/plugin";
 import { installBuiltinPlugin } from "@/plugin";
 import ViewportInfo from "./ViewportInfo.vue";
 import ViewportMiniMap from "./ViewportMiniMap.vue";
+import ViewportRealtimeWeather from "./ViewportRealtimeWeather.vue";
 import ViewportCompass from "./ViewportCompass.vue";
 import ViewportTools from "./ViewportTools.vue";
 import BIMProperties from "./BIMProperties.vue";

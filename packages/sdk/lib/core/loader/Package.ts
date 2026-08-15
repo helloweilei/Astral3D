@@ -12,6 +12,7 @@ import { PackageSkeleton } from "@/core/loader/Package.Skeleton";
 import { useDispatchSignal } from "@/hooks";
 import { ObjectLoader } from "./ObjectLoader";
 import App from "@/core/app/App";
+import { defaultWeatherClouds, defaultWeatherRealtime } from "@/core/app/modules/Project";
 import type Viewer from "@/core/viewer/Viewer";
 
 interface IPackConfig {
@@ -755,21 +756,21 @@ export class Package {
 						}
 						if (configJson.weather.clouds) {
 							if (!projectWeather.clouds) {
-								projectWeather.clouds = {
-									enabled: false,
-									color: "#666666",
-									thickness: 0.55,
-									height: 180,
-									speed: 1,
-									density: 1,
-									alpha: 0.75,
-									scale: 1.0,
-								};
+								projectWeather.clouds = defaultWeatherClouds();
 							}
 							Object.keys(configJson.weather.clouds).forEach(key => {
 								projectWeather.clouds[key] = configJson.weather.clouds[key];
 							});
 							useDispatchSignal("sceneCloudSettingsChanged");
+						}
+						if (configJson.weather.realtime) {
+							if (!projectWeather.realtime) {
+								projectWeather.realtime = defaultWeatherRealtime();
+							}
+							Object.keys(configJson.weather.realtime).forEach(key => {
+								projectWeather.realtime[key] = configJson.weather.realtime[key];
+							});
+							useDispatchSignal("sceneWeatherRealtimeChanged");
 						}
 					}
 

@@ -2,8 +2,11 @@
 import {computed, onMounted, reactive, toRaw} from "vue";
 import { t } from "@/language";
 import {App,Utils} from "@astral3d/engine";
+import { useWeatherConfigSync } from "./useWeatherConfigSync";
 
 const snowConfig = reactive(JSON.parse(JSON.stringify(App.project.getKey("weather.snow"))));
+
+useWeatherConfigSync("weather.snow", snowConfig, "sceneSnowSettingsChanged");
 
 const disabled = computed(() => !snowConfig.enabled);
 

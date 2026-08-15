@@ -1,29 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, toRaw } from "vue";
 import { t } from "@/language";
-import { App, Utils } from "@astral3d/engine";
+import { App, Utils, defaultWeatherClouds } from "@astral3d/engine";
 import EsInputNumber from "@/components/es/EsInputNumber.vue";
-
-const DEFAULT_CLOUDS = {
-	enabled: false,
-	color: "#666666",
-	thickness: 0.55,
-	height: 180,
-	speed: 2,
-	density: 1,
-	alpha: 0.75,
-	scale: 1.0,
-};
+import { useWeatherConfigSync } from "./useWeatherConfigSync";
 
 const cloudsConfig = reactive(
-	JSON.parse(JSON.stringify(App.project.getKey("weather.clouds") ?? DEFAULT_CLOUDS))
+	JSON.parse(JSON.stringify(App.project.getKey("weather.clouds") ?? defaultWeatherClouds()))
 );
+
+useWeatherConfigSync("weather.clouds", cloudsConfig, "sceneCloudSettingsChanged");
 
 const disabled = computed(() => !cloudsConfig.enabled);
 
 onMounted(() => {
 	const viewerLoaded = () => {
-		Utils.deepAssign(cloudsConfig, App.project.getKey("weather.clouds") ?? DEFAULT_CLOUDS);
+		Utils.deepAssign(cloudsConfig, App.project.getKey("weather.clouds") ?? defaultWeatherClouds());
 		window.viewer.removeEventListener("loaded", viewerLoaded);
 	};
 	window.viewer?.addEventListener("loaded", viewerLoaded);

@@ -190,6 +190,10 @@ declare namespace IAppProject {
 			/** 云朵尺度 */
 			scale: number;
 		};
+		/** 按地形原点拉取并展示实时天气 */
+		realtime: {
+			enabled: boolean;
+		};
 	}
 
 	interface SceneInfo {

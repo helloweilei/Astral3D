@@ -18,6 +18,22 @@ const DEFAULT_IMAGERY_BOUNDS: IAppProject.Terrain["imagery"]["bounds"] = {
 	north: 39.92,
 };
 
+/** 云层默认值：工程配置 / 解包补全共用，避免多处拷贝漂移 */
+export const defaultWeatherClouds = (): IAppProject.Weather["clouds"] => ({
+	enabled: false,
+	color: "#666666",
+	thickness: 0.55,
+	height: 180,
+	speed: 1,
+	density: 1,
+	alpha: 0.75,
+	scale: 1.0,
+});
+
+export const defaultWeatherRealtime = (): IAppProject.Weather["realtime"] => ({
+	enabled: false,
+});
+
 export const defaultProjectInfo = (): IAppProject.Info => ({
 	// 项目运行是否启用xr
 	xr: false,
@@ -168,16 +184,8 @@ export const defaultProjectInfo = (): IAppProject.Info => ({
 			speed: 1.0,
 			alpha: 0.5,
 		},
-		clouds: {
-			enabled: false,
-			color: "#666666",
-			thickness: 0.55,
-			height: 180,
-			speed: 1,
-			density: 1,
-			alpha: 0.75,
-			scale: 1.0,
-		},
+		clouds: defaultWeatherClouds(),
+		realtime: defaultWeatherRealtime(),
 	},
 	// 视口 UI
 	viewport: {
@@ -401,6 +409,9 @@ class Project {
 					break;
 				case "weather.clouds":
 					useDispatchSignal("sceneCloudSettingsChanged");
+					break;
+				case "weather.realtime":
+					useDispatchSignal("sceneWeatherRealtimeChanged");
 					break;
 			}
 		} else if (key.startsWith("terrain")) {

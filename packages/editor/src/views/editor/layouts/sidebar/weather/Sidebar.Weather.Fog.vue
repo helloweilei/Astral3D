@@ -2,8 +2,11 @@
 import {computed, onMounted, reactive, toRaw} from "vue";
 import {t} from "@/language";
 import {App,Utils} from "@astral3d/engine";
+import { useWeatherConfigSync } from "./useWeatherConfigSync";
 
 const fogConfig = reactive(JSON.parse(JSON.stringify(App.project.getKey("weather.fog"))));
+
+useWeatherConfigSync("weather.fog", fogConfig, "sceneFogSettingsChanged");
 
 const disabled = computed(() => !fogConfig.enabled);
 const fogType = computed(() => fogConfig.type);
