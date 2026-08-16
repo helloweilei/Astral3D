@@ -2,7 +2,7 @@
  * @author ErSan
  * @email  mlt131220@163.com
  * @date   2025/01/09
- * @description 贴相机的闪电效果
+ * @description 贴相机闪电：分形电弧丝带（芯+光晕）+ 天空闪照回击
  */
 import * as THREE from "three";
 import type CameraControls from "camera-controls";
@@ -15,239 +15,404 @@ interface ILightningOption {
 	color?: string;
 }
 
+interface IStrikeState {
+	cooldown: number;
+	phase: number;
+	intensity: number;
+	strokesLeft: number;
+	nextStrokeIn: number;
+	totalStrokes: number;
+	flicker: number;
+}
+
+type Pt = { x: number; y: number };
+
+function hash(n: number): number {
+	const x = Math.sin(n * 127.1) * 43758.5453;
+	return x - Math.floor(x);
+}
+
+/** 中点位移分形折线，更接近真实电弧 */
+function fractalPolyline(a: Pt, b: Pt, depth: number, seed: number, roughness: number): Pt[] {
+	if (depth <= 0) return [a, b];
+	const mid: Pt = {
+		x: (a.x + b.x) * 0.5,
+		y: (a.y + b.y) * 0.5,
+	};
+	const dx = b.x - a.x;
+	const dy = b.y - a.y;
+	const len = Math.hypot(dx, dy) || 1e-4;
+	const px = -dy / len;
+	const py = dx / len;
+	const offset = (hash(seed) - 0.5) * 2 * roughness * len;
+	mid.x += px * offset;
+	mid.y += py * offset;
+	const left = fractalPolyline(a, mid, depth - 1, seed * 1.7 + 3.1, roughness * 0.72);
+	const right = fractalPolyline(mid, b, depth - 1, seed * 2.3 + 5.9, roughness * 0.72);
+	return left.slice(0, -1).concat(right);
+}
+
+function buildBoltPolylines(seed: number, size: number): { points: Pt[]; width: number }[] {
+	const paths: { points: Pt[]; width: number }[] = [];
+	const startX = (hash(seed) - 0.5) * 1.0;
+	const endX = startX + (hash(seed + 2) - 0.5) * 0.35;
+	const main = fractalPolyline({ x: startX, y: 1.08 }, { x: endX, y: -0.35 }, 4, seed + 11, 0.55);
+	paths.push({ points: main, width: THREE.MathUtils.lerp(0.012, 0.028, size) });
+
+	// 分支偏少：沿主干稀疏取样，二级分叉更罕见
+	const branchChance = THREE.MathUtils.lerp(0.12, 0.28, THREE.MathUtils.clamp(size, 0, 1));
+	const step = Math.max(4, Math.floor(main.length / 5));
+	for (let i = 4; i < main.length - 3; i += step) {
+		if (hash(seed + i * 17.3) > branchChance) continue;
+		const p = main[i];
+		const side = hash(seed + i * 29) > 0.5 ? 1 : -1;
+		const len = 0.14 + hash(seed + i * 41) * 0.22;
+		const end: Pt = {
+			x: p.x + side * len * (0.55 + hash(seed + i * 7) * 0.5),
+			y: p.y - len * (0.45 + hash(seed + i * 9) * 0.55),
+		};
+		const branch = fractalPolyline(p, end, 2, seed + i * 50, 0.4);
+		paths.push({
+			points: branch,
+			width: THREE.MathUtils.lerp(0.006, 0.014, size) * (0.55 + hash(seed + i) * 0.35),
+		});
+
+		if (hash(seed + i * 61) > 0.82 && branch.length > 3) {
+			const bp = branch[Math.floor(branch.length * 0.45)];
+			const s2 = side * (hash(seed + i * 71) > 0.5 ? 1 : -1);
+			const len2 = len * (0.3 + hash(seed + i * 81) * 0.25);
+			const end2: Pt = {
+				x: bp.x + s2 * len2 * 0.7,
+				y: bp.y - len2 * 0.55,
+			};
+			paths.push({
+				points: fractalPolyline(bp, end2, 1, seed + i * 90, 0.35),
+				width: THREE.MathUtils.lerp(0.004, 0.008, size),
+			});
+		}
+	}
+
+	if (hash(seed + 99) > 0.78) {
+		const sx = (hash(seed + 100) - 0.5) * 1.2;
+		const weak = fractalPolyline({ x: sx, y: 1.0 }, { x: sx + (hash(seed + 101) - 0.5) * 0.4, y: 0.15 }, 4, seed + 110, 0.5);
+		paths.push({ points: weak, width: THREE.MathUtils.lerp(0.006, 0.012, size) });
+	}
+
+	return paths;
+}
+
+/** 将折线挤成带 UV 的丝带三角带（clip-space） */
+function pathsToRibbonGeometry(paths: { points: Pt[]; width: number }[]): THREE.BufferGeometry {
+	const positions: number[] = [];
+	const uvs: number[] = [];
+	const along: number[] = [];
+
+	for (const path of paths) {
+		const pts = path.points;
+		if (pts.length < 2) continue;
+		const half = path.width * 0.5;
+		let distAcc = 0;
+
+		for (let i = 0; i < pts.length - 1; i++) {
+			const a = pts[i];
+			const b = pts[i + 1];
+			const dx = b.x - a.x;
+			const dy = b.y - a.y;
+			const len = Math.hypot(dx, dy) || 1e-4;
+			const nx = (-dy / len) * half;
+			const ny = (dx / len) * half;
+
+			const taperA = 1 - (i / (pts.length - 1)) * 0.35;
+			const taperB = 1 - ((i + 1) / (pts.length - 1)) * 0.35;
+
+			// 两三角形：aL aR bR / aL bR bL
+			const aLx = a.x - nx * taperA;
+			const aLy = a.y - ny * taperA;
+			const aRx = a.x + nx * taperA;
+			const aRy = a.y + ny * taperA;
+			const bLx = b.x - nx * taperB;
+			const bLy = b.y - ny * taperB;
+			const bRx = b.x + nx * taperB;
+			const bRy = b.y + ny * taperB;
+
+			const u0 = distAcc;
+			distAcc += len;
+			const u1 = distAcc;
+
+			positions.push(aLx, aLy, 0, aRx, aRy, 0, bRx, bRy, 0);
+			uvs.push(0, 0, 1, 0, 1, 1);
+			along.push(u0, u0, u1);
+
+			positions.push(aLx, aLy, 0, bRx, bRy, 0, bLx, bLy, 0);
+			uvs.push(0, 0, 1, 1, 0, 1);
+			along.push(u0, u1, u1);
+		}
+	}
+
+	const geom = new THREE.BufferGeometry();
+	geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+	geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+	geom.setAttribute("along", new THREE.Float32BufferAttribute(along, 1));
+	return geom;
+}
+
 export default class Lightning {
 	options: ILightningOption;
-	mesh: THREE.Mesh;
+	mesh: THREE.Group;
 	controls: CameraControls;
+
+	private flashMesh: THREE.Mesh;
+	private boltMesh: THREE.Mesh;
+	private boltGeom: THREE.BufferGeometry;
+	private flashMat: THREE.ShaderMaterial;
+	private boltMat: THREE.ShaderMaterial;
+	private state: IStrikeState;
+	private boltSeed = 1;
+	private time = 0;
 
 	constructor(option: ILightningOption, controls: CameraControls) {
 		const defaultOption: ILightningOption = {
 			speed: 1.0,
 			density: 1.0,
 			size: 0.5,
-			alpha: 0.8,
-			color: "#ffffff",
+			alpha: 0.85,
+			color: "#d7e9ff",
 		};
 
 		this.options = Object.assign({}, defaultOption, option);
-
 		this.controls = controls;
 
-		this.mesh = this.createMesh();
-		this.mesh.renderOrder = 100;
-
-		this.updatePosition();
-	}
-
-	createMesh() {
-		const geometry = new THREE.PlaneGeometry(200, 200);
-
-		const uniforms = {
-			u_time: {
-				type: "f",
-				value: 0.0,
-			},
-			tDiffuse: { value: null },
-			u_resolution: {
-				type: "v2",
-				value: new THREE.Vector2(window.innerWidth, window.innerHeight).multiplyScalar(window.devicePixelRatio),
-			},
-			alpha: {
-				type: "f",
-				value: this.options.alpha,
-			},
-			speed: { value: this.options.speed },
-			density: { value: this.options.density },
-			size: { value: this.options.size },
-			color: { value: new THREE.Color(this.options.color || "#ffffff") },
+		this.state = {
+			cooldown: 0,
+			phase: 0,
+			intensity: 0,
+			strokesLeft: 0,
+			nextStrokeIn: 0,
+			totalStrokes: 0,
+			flicker: 1,
 		};
 
-		const material = new THREE.ShaderMaterial({
+		this.mesh = new THREE.Group();
+		this.mesh.name = "Lightning";
+		this.mesh.frustumCulled = false;
+		this.mesh.renderOrder = 999;
+
+		const color = new THREE.Color(this.options.color || "#d7e9ff");
+
+		this.flashMat = new THREE.ShaderMaterial({
 			transparent: true,
-			uniforms: uniforms,
-			side: 2,
 			depthTest: false,
 			depthWrite: false,
 			blending: THREE.AdditiveBlending,
+			toneMapped: false,
+			uniforms: {
+				uIntensity: { value: 0 },
+				uColor: { value: color.clone() },
+				uAlpha: { value: this.options.alpha },
+				uResolution: {
+					value: new THREE.Vector2(window.innerWidth, window.innerHeight).multiplyScalar(window.devicePixelRatio),
+				},
+				uFlicker: { value: 1 },
+			},
 			vertexShader: `
-                varying vec2 vUv;
-                void main() {
-                    vUv = uv;
-                    gl_Position = vec4( position, 1.0 );
-                }
-            `,
+				void main() {
+					gl_Position = vec4(position.xy, 0.0, 1.0);
+				}
+			`,
 			fragmentShader: `
-                uniform sampler2D tDiffuse;
-                uniform vec2 u_resolution;
-                uniform float u_time;
-                uniform float speed;
-                uniform float density;
-                uniform float size;
-                uniform vec3 color;
-                uniform float alpha;
-                varying highp vec2 vUv;
-
-                float hash(float n) {
-                    return fract(sin(n) * 43758.5453123);
-                }
-
-                float noise(float x) {
-                    float i = floor(x);
-                    float f = fract(x);
-                    float u = f * f * (3.0 - 2.0 * f);
-                    return mix(hash(i), hash(i + 1.0), u);
-                }
-
-                float distToSegment(vec2 p, vec2 a, vec2 b) {
-                    vec2 ab = b - a;
-                    float t = clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0);
-                    return length(p - (a + t * ab));
-                }
-
-                float fbm(float x) {
-                    float v = 0.0;
-                    float a = 0.5;
-                    for (int i = 0; i < 4; i++) {
-                        v += a * noise(x);
-                        x *= 2.0;
-                        a *= 0.5;
-                    }
-                    return v;
-                }
-
-                float jaggedBolt(vec2 uv, float seed) {
-                    float bolt = 0.0;
-                    float steps = 16.0;
-                    
-                    float startX = 0.2 + hash(seed) * 0.6;
-                    vec2 prev = vec2(startX, 1.0);
-                    
-                    for (float i = 1.0; i <= steps; i++) {
-                        float t = i / steps;
-                        float prog = t;
-                        
-                        float offset = (hash(seed + i * 3.7) - 0.5) * 0.12;
-                        offset += (hash(seed + i * 7.3) - 0.5) * 0.06;
-                        offset += (hash(seed + i * 11.1) - 0.5) * 0.03;
-                        
-                        float currX = prev.x + offset;
-                        float currY = 1.0 - prog;
-                        vec2 curr = vec2(currX, currY);
-                        
-                        float d = distToSegment(uv, prev, curr);
-                        float lineWidth = 0.0015;
-                        
-                        float core = exp(-d / lineWidth);
-                        float glow = exp(-d / (lineWidth * 6.0)) * 0.4;
-                        
-                        bolt += core + glow;
-                        
-                        if (hash(seed + i * 13.0) > 0.75 && prog > 0.15 && prog < 0.85) {
-                            float branchLen = 0.15 + hash(seed + i * 17.0) * 0.2;
-                            vec2 branchStart = mix(prev, curr, hash(seed + i * 19.0));
-                            float branchAngle = (hash(seed + i * 23.0) - 0.5) * 1.5;
-                            vec2 branchDir = normalize(vec2(sin(branchAngle), -cos(branchAngle)));
-                            vec2 branchEnd = branchStart + branchDir * branchLen;
-                            
-                            float bd = distToSegment(uv, branchStart, branchEnd);
-                            float bWidth = lineWidth * 0.7;
-                            float bCore = exp(-bd / bWidth) * 0.6;
-                            float bGlow = exp(-bd / (bWidth * 5.0)) * 0.25;
-                            
-                            bolt += bCore + bGlow;
-                        }
-                        
-                        prev = curr;
-                    }
-                    
-                    return clamp(bolt, 0.0, 1.0);
-                }
-
-                void main(){
-                    vec3 col = texture(tDiffuse, vUv).rgb;
-                    vec2 q = gl_FragCoord.xy / u_resolution.xy;
-                    vec2 uv = q;
-                    uv.x *= u_resolution.x / u_resolution.y;
-
-                    float t = u_time * speed;
-                    float flashSeed = hash(floor(t * density));
-
-                    float currentFlash = 0.0;
-                    float boltSeed = 0.0;
-                    if (flashSeed > (1.0 - density * 0.4)) {
-                        float flashPhase = fract(t * density);
-                        float flashCurve = exp(-flashPhase * 25.0 / size);
-                        currentFlash = flashCurve;
-                        boltSeed = floor(t * density);
-                    }
-
-                    float skyMask = smoothstep(0.3, 0.6, uv.y);
-
-                    float bolt1 = jaggedBolt(uv, boltSeed + 0.0) * skyMask;
-                    float bolt2 = jaggedBolt(uv, boltSeed + 500.0) * skyMask * 0.5;
-
-                    float totalBolt = (bolt1 + bolt2) * currentFlash;
-
-                    float flash1 = fbm(u_time * 10.0 * speed) * currentFlash;
-                    float flash2 = fbm(u_time * 15.0 * speed + 100.0) * currentFlash * 0.5;
-                    float flash3 = noise(u_time * 30.0 * speed) * currentFlash * 0.3;
-                    float ambientFlash = (flash1 + flash2 + flash3) * 0.3;
-
-                    vec3 lightningColor = color * (totalBolt + ambientFlash);
-                    col += lightningColor;
-
-                    col += color * ambientFlash * 0.5;
-
-                    gl_FragColor = vec4(col, alpha * (totalBolt + ambientFlash * 0.5));
-                }
-            `,
+				uniform float uIntensity;
+				uniform vec3 uColor;
+				uniform float uAlpha;
+				uniform vec2 uResolution;
+				uniform float uFlicker;
+				void main() {
+					vec2 q = gl_FragCoord.xy / max(uResolution, vec2(1.0));
+					float sky = pow(smoothstep(0.0, 0.85, q.y), 1.15);
+					float vig = 1.0 - 0.35 * length((q - vec2(0.5, 0.55)) * vec2(1.2, 1.0));
+					float a = uIntensity * uAlpha * uFlicker;
+					if (a < 0.001) discard;
+					vec3 col = uColor * sky * vig * (0.55 + 0.9 * uIntensity);
+					// 地平线更亮一点，模拟云底反射
+					col += uColor * pow(sky, 2.5) * 0.45 * uIntensity;
+					gl_FragColor = vec4(col * a, 1.0);
+				}
+			`,
 		});
 
-		return new THREE.Mesh(geometry, material);
+		this.flashMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.flashMat);
+		this.flashMesh.frustumCulled = false;
+		this.flashMesh.renderOrder = 998;
+		this.flashMesh.visible = false;
+
+		this.boltGeom = new THREE.BufferGeometry();
+		this.boltMat = new THREE.ShaderMaterial({
+			transparent: true,
+			depthTest: false,
+			depthWrite: false,
+			blending: THREE.AdditiveBlending,
+			toneMapped: false,
+			side: THREE.DoubleSide,
+			uniforms: {
+				uIntensity: { value: 0 },
+				uColor: { value: color.clone() },
+				uAlpha: { value: this.options.alpha },
+				uFlicker: { value: 1 },
+				uTime: { value: 0 },
+			},
+			vertexShader: `
+				attribute float along;
+				varying vec2 vUv;
+				varying float vAlong;
+				void main() {
+					vUv = uv;
+					vAlong = along;
+					gl_Position = vec4(position.xy, 0.0, 1.0);
+				}
+			`,
+			fragmentShader: `
+				uniform float uIntensity;
+				uniform vec3 uColor;
+				uniform float uAlpha;
+				uniform float uFlicker;
+				uniform float uTime;
+				varying vec2 vUv;
+				varying float vAlong;
+
+				void main() {
+					// uv.x: 0..1 横向（中心为 0.5）；用距离做芯 + 宽光晕
+					float d = abs(vUv.x - 0.5) * 2.0;
+					float core = exp(-d * d * 28.0);
+					float mid = exp(-d * d * 8.0) * 0.55;
+					float glow = exp(-d * d * 1.8) * 0.35;
+					float filament = 0.85 + 0.15 * sin(vAlong * 40.0 + uTime * 30.0);
+					float shape = (core * 1.4 + mid + glow) * filament;
+
+					float a = shape * uIntensity * uAlpha * uFlicker;
+					if (a < 0.004) discard;
+
+					vec3 hot = vec3(1.0, 1.0, 1.0);
+					vec3 cool = mix(uColor, vec3(0.65, 0.82, 1.0), 0.45);
+					vec3 col = mix(cool, hot, core);
+					col *= (0.9 + 1.4 * core) * uIntensity;
+
+					gl_FragColor = vec4(col * a, 1.0);
+				}
+			`,
+		});
+
+		this.boltMesh = new THREE.Mesh(this.boltGeom, this.boltMat);
+		this.boltMesh.frustumCulled = false;
+		this.boltMesh.renderOrder = 999;
+		this.boltMesh.visible = false;
+
+		this.mesh.add(this.flashMesh);
+		this.mesh.add(this.boltMesh);
+
+		this.rebuildBolt(1);
+		this.updatePosition();
+	}
+
+	private rebuildBolt(seed: number) {
+		this.boltSeed = seed;
+		const paths = buildBoltPolylines(seed, this.options.size);
+		// 外层加宽光晕丝带
+		const glowPaths = paths.map(p => ({
+			points: p.points,
+			width: p.width * 4.5,
+		}));
+		const all = glowPaths.concat(paths);
+		const next = pathsToRibbonGeometry(all);
+		this.boltMesh.geometry.dispose();
+		this.boltMesh.geometry = next;
+		this.boltGeom = next;
+	}
+
+	private triggerStrike() {
+		const d = Math.max(0.05, this.options.density);
+		const baseGap = THREE.MathUtils.lerp(3.8, 0.7, THREE.MathUtils.clamp(d / 2, 0, 1));
+		this.state.cooldown = (baseGap / Math.max(this.options.speed, 0.05)) * (0.55 + hash(this.boltSeed + 9) * 0.9);
+
+		this.state.phase = 1;
+		this.state.totalStrokes = 1 + Math.floor(hash(this.boltSeed + 3) * 2.6);
+		this.state.strokesLeft = this.state.totalStrokes;
+		this.state.nextStrokeIn = 0;
+		this.rebuildBolt(Math.floor(hash(performance.now() * 0.001 + this.boltSeed) * 100000));
+		this.fireStroke();
+	}
+
+	private fireStroke() {
+		const strokeIndex = this.state.totalStrokes - this.state.strokesLeft;
+		const peak = strokeIndex === 0 ? 1.0 : 0.4 + hash(this.boltSeed + strokeIndex) * 0.45;
+		this.state.intensity = Math.max(this.state.intensity, peak);
+		this.state.nextStrokeIn = 0.035 + hash(this.boltSeed + 7 + strokeIndex) * 0.12;
+		this.state.strokesLeft -= 1;
 	}
 
 	updatePosition() {
 		if (this.controls && this.mesh) {
-			const position = this.controls.getPosition(new THREE.Vector3());
 			const center = this.controls.getTarget(new THREE.Vector3());
 			this.mesh.position.copy(center);
-			if (position.y < 100) {
-				this.mesh.position.y = -100;
-			} else {
-				this.mesh.position.y = 0;
-			}
+			this.mesh.position.y = 0;
 		}
 	}
 
-	updateOptions(option) {
-		const material = <THREE.ShaderMaterial>this.mesh.material;
-		for (const key in option) {
-			this.options[key] = option[key];
-
-			if (material.uniforms[key]) {
-				let value = option[key];
-
-				switch (key) {
-					case "color":
-						value = new THREE.Color(value);
-						break;
-				}
-				material.uniforms[key].value = value;
-			}
-		}
+	updateOptions(option: Partial<ILightningOption>) {
+		Object.assign(this.options, option);
+		const color = new THREE.Color(this.options.color || "#d7e9ff");
+		this.flashMat.uniforms.uColor.value.copy(color);
+		this.flashMat.uniforms.uAlpha.value = this.options.alpha;
+		this.boltMat.uniforms.uColor.value.copy(color);
+		this.boltMat.uniforms.uAlpha.value = this.options.alpha;
 	}
 
-	update(deltaTime) {
+	update(deltaTime: number) {
 		this.updatePosition();
 
-		if (this.mesh.material && this.mesh.material instanceof THREE.ShaderMaterial) {
-			this.mesh.material.uniforms.u_time.value += deltaTime;
+		const dt = Math.min(Math.max(deltaTime, 0), 0.1);
+		this.time += dt;
+		const res = this.flashMat.uniforms.uResolution.value as THREE.Vector2;
+		res.set(window.innerWidth, window.innerHeight).multiplyScalar(window.devicePixelRatio);
+
+		if (this.state.phase === 0) {
+			this.state.cooldown -= dt;
+			if (this.state.cooldown <= 0) this.triggerStrike();
+		} else {
+			const decay = 11 / Math.max(this.options.size, 0.2);
+			this.state.intensity *= Math.exp(-dt * decay);
+			// 高频微闪烁
+			this.state.flicker = 0.82 + 0.18 * Math.sin(this.time * 90 + this.boltSeed) * Math.sin(this.time * 37);
+
+			this.state.nextStrokeIn -= dt;
+			if (this.state.strokesLeft > 0 && this.state.nextStrokeIn <= 0) {
+				this.fireStroke();
+				if (hash(this.boltSeed + this.state.strokesLeft) > 0.4) {
+					this.rebuildBolt(this.boltSeed + 19 + this.state.strokesLeft);
+				}
+			}
+
+			if (this.state.strokesLeft <= 0 && this.state.intensity < 0.02) {
+				this.state.phase = 0;
+				this.state.intensity = 0;
+				this.state.flicker = 1;
+			}
 		}
+
+		const inten = this.state.intensity;
+		const flick = this.state.phase ? this.state.flicker : 1;
+		this.flashMat.uniforms.uIntensity.value = inten * 0.95;
+		this.flashMat.uniforms.uFlicker.value = flick;
+		this.boltMat.uniforms.uIntensity.value = inten;
+		this.boltMat.uniforms.uFlicker.value = flick;
+		this.boltMat.uniforms.uTime.value = this.time;
+		this.flashMesh.visible = inten > 0.001;
+		this.boltMesh.visible = inten > 0.001;
 	}
 
 	dispose() {
-		this.mesh.geometry.dispose();
-		(<THREE.Material>this.mesh.material).dispose();
+		this.flashMesh.geometry.dispose();
+		this.flashMat.dispose();
+		this.boltGeom.dispose();
+		this.boltMat.dispose();
 		this.mesh.removeFromParent();
 	}
 }

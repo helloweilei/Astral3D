@@ -289,9 +289,11 @@ export class Weather {
 					this.viewer.modules.controls
 				);
 
-				this.lightning.mesh.ignore = true;
-				this.viewer.scene.add(this.lightning.mesh as THREE.Object3D);
+				(this.lightning.mesh as THREE.Object3D & { ignore?: boolean }).ignore = true;
+				this.lightning.mesh.frustumCulled = false;
+				this.viewer.scene.add(this.lightning.mesh);
 			}
+			this.viewer.render();
 		} else {
 			if (!this.lightning) return;
 
