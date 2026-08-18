@@ -11,6 +11,68 @@ import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
 import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
 import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
 
+let glslColorProvider: monaco.IDisposable | null = null;
+let glslLanguageReady = false;
+
+/** 注册 GLSL 语言高亮（基于 cpp）+ 十六进制颜色取色器 */
+function ensureGlslLanguage(m: typeof monaco) {
+  if (!glslLanguageReady) {
+    m.languages.register({ id: "glsl" });
+    // 复用 C++ 词法，足够做关键字/注释高亮
+    void import("monaco-editor/esm/vs/basic-languages/cpp/cpp.js").then(({ language }) => {
+      m.languages.setMonarchTokensProvider("glsl", language as monaco.languages.IMonarchLanguage);
+    });
+    glslLanguageReady = true;
+  }
+
+  if (!glslColorProvider) {
+    glslColorProvider = m.languages.registerColorProvider("glsl", {
+      provideDocumentColors(model) {
+        const text = model.getValue();
+        const colors: monaco.languages.IColorInformation[] = [];
+        const hexRe = /#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g;
+        let match: RegExpExecArray | null;
+        while ((match = hexRe.exec(text))) {
+          const hex = match[1];
+          let r = 0,
+            g = 0,
+            b = 0;
+          if (hex.length === 3) {
+            r = parseInt(hex[0] + hex[0], 16) / 255;
+            g = parseInt(hex[1] + hex[1], 16) / 255;
+            b = parseInt(hex[2] + hex[2], 16) / 255;
+          } else {
+            r = parseInt(hex.slice(0, 2), 16) / 255;
+            g = parseInt(hex.slice(2, 4), 16) / 255;
+            b = parseInt(hex.slice(4, 6), 16) / 255;
+          }
+          const start = model.getPositionAt(match.index);
+          const end = model.getPositionAt(match.index + match[0].length);
+          colors.push({
+            range: {
+              startLineNumber: start.lineNumber,
+              startColumn: start.column,
+              endLineNumber: end.lineNumber,
+              endColumn: end.column,
+            },
+            color: { red: r, green: g, blue: b, alpha: 1 },
+          });
+        }
+        return colors;
+      },
+      provideColorPresentations(_model, colorInfo) {
+        const { red, green, blue } = colorInfo.color;
+        const toHex = (n: number) =>
+          Math.round(Math.min(1, Math.max(0, n)) * 255)
+            .toString(16)
+            .padStart(2, "0");
+        const label = `#${toHex(red)}${toHex(green)}${toHex(blue)}`;
+        return [{ label }];
+      },
+    });
+  }
+}
+
 const props = withDefaults(defineProps<{
   source: string,
   mode: string,
@@ -28,9 +90,9 @@ const monacoEditorRef = ref();
 // 编辑器实列
 let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 // 导入的sqlLanguage
-let sqlLanguage:any = null;
+let sqlLanguage: any = null;
 // sql语法提示示例
-let sqlProvider:monaco.IDisposable | null = null;
+let sqlProvider: monaco.IDisposable | null = null;
 // 语法错误信息
 let errorMarkers: monaco.editor.IMarker[] = [];
 
@@ -59,11 +121,11 @@ onMounted(async () => {
   await initMonaco();
 })
 onBeforeUnmount(() => {
-  if(sqlLanguage){
+  if (sqlLanguage) {
     sqlLanguage = null;
   }
 
-  if(sqlProvider){
+  if (sqlProvider) {
     sqlProvider.dispose();
     sqlProvider = null;
   }
@@ -98,14 +160,14 @@ async function initMonaco() {
   // );
 
   if (props.mode === "sql") {
-    if(!sqlLanguage){
+    if (!sqlLanguage) {
       const { language } = await import("monaco-editor/esm/vs/basic-languages/sql/sql.js");
       sqlLanguage = language;
     }
 
     sqlProvider = monaco.languages.registerCompletionItemProvider('sql', {
       provideCompletionItems: (model, position) => {
-        let suggestions:any = []
+        let suggestions: any = []
         const { lineNumber, column } = position
         const textBeforePointer = model.getValueInRange({
           startLineNumber: lineNumber,
@@ -137,6 +199,10 @@ async function initMonaco() {
     })
   }
 
+  if (props.mode === "glsl") {
+    ensureGlslLanguage(monaco);
+  }
+
   editor = monaco.editor.create(monacoEditorRef.value, {
     value: props.source,
     language: props.mode,
@@ -150,6 +216,7 @@ async function initMonaco() {
       tabCompletion: 'on' as 'on', // 代码提示按tab完成
       foldingStrategy: 'auto' as 'auto', // 折叠策略
       smoothScrolling: true, // 滚动动画
+      colorDecorators: true, // 十六进制等颜色的色块与取色器
       // acceptSuggestionOnCommitCharacter: true, // 接受关于提交字符的建议
       // acceptSuggestionOnEnter: 'on', // 接受输入建议 "on" | "off" | "smart"
       // accessibilityPageSize: 10, // 辅助功能页面大小 Number 说明：控制编辑器中可由屏幕阅读器读出的行数。警告：这对大于默认值的数字具有性能含义。
@@ -179,24 +246,6 @@ async function initMonaco() {
       minimap: {
         enabled: props.mode !== 'sql', // 是否启用预览图
       },
-      // scrollbar: {
-      //     verticalScrollbarSize: 5,
-      //     horizontalScrollbarSize: 5,
-      //     arrowSize: 10,
-      //     alwaysConsumeMouseWheel: false,
-      // },
-      // links: true, // 是否点击链接
-      // overviewRulerBorder: true, // 是否应围绕概览标尺绘制边框
-      // renderLineHighlight: 'gutter', // 当前行突出显示方式
-      // scrollBeyondLastLine: false, // 设置编辑器是否可以滚动到最后一行之后
-      // lineNumbers: 'on',
-      // lineNumbersMinChars: 0,
-
-      // fontSize: 13,
-      // roundedSelection: false, // 右侧不显示编辑器预览框
-      // autoIndent: 'full',
-      // formatOnType: true,
-      // formatOnPaste: true
     }, props.config)
   })
 

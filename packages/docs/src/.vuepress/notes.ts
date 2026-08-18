@@ -172,7 +172,8 @@ const guideNote = defineNoteConfig({
                     prefix: 'builtin',
                     icon: 'carbon:plug',
                     items: [
-                        'glTFHandler'
+                        'glTFHandler',
+                        '着色器沙盒',
                     ]
                 }
             ]
@@ -251,6 +252,8 @@ const sdkNote = defineNoteConfig({
                 { text: '概览', link: '/notes/sdk/materials/' },
                 'TeapotGeometry',
                 'Shader材质',
+                '着色器入门-UV与片元',
+                '着色器进阶-闪电案例',
             ]
         },
         {

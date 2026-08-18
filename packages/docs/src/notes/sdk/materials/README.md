@@ -6,7 +6,7 @@ createTime: 2026/06/09 00:00:00
 
 # 材质与几何
 
-这一页覆盖几何与 Shader 材质能力：`TeapotGeometry` 和六个 Shader 材质静态类。
+这一页覆盖几何与 Shader 材质能力：`TeapotGeometry`、六个 Shader 材质静态类，以及学习路径 [着色器入门：UV 与片元](./着色器入门-UV与片元.md) → [着色器进阶：以闪电效果为例](./着色器进阶-闪电案例.md)。
 
 ## TeapotGeometry
 
