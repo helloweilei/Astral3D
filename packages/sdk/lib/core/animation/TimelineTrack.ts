@@ -11,6 +11,7 @@ import {
 import {useAddSignal, useDispatchSignal} from "@/hooks";
 import { getParentPath,debounce, deepAssign, getNestedProperty } from "@/utils";
 import { KeyframeTrackFactory } from "@/core/animation/AnimationManager";
+import { syncDayNightEnvironment, enterDayNightCycle, exitDayNightCycle } from "@/core/animation/presets/dayNightCycle";
 import App from "@/core/app/App";
 
 export interface ITimelineKeyframe extends TimelineKeyframe {
@@ -47,6 +48,8 @@ class TimelineTrack extends THREE.EventDispatcher<CustomEvents> {
      * 动画编辑轨道当前正在处理的（绑定的）动画
      */
     bindAction: THREE.AnimationAction | null = null;
+
+    private _restoringDayNight = false;
 
     private resizeObserver: ResizeObserver;
 
@@ -231,6 +234,12 @@ class TimelineTrack extends THREE.EventDispatcher<CustomEvents> {
             this.bindAction.getMixer().update(0.016);
             // this.bindAction.getRoot() 获取到的对象可能是editor.locked对象，需要获取正在操作的对象
 
+            const root = this.bindAction.getRoot();
+            if (root?.userData?.isDayNightCycle && !this._restoringDayNight) {
+                root.userData.dayNightSceneActive = true;
+                syncDayNightEnvironment(root);
+            }
+
             if (App.selected){
                 useDispatchSignal("objectChanged", App.selected);
                 useDispatchSignal("materialChanged", App.selected.material);
@@ -303,6 +312,11 @@ class TimelineTrack extends THREE.EventDispatcher<CustomEvents> {
         }
 
         this.timeline.setTime(this.bindAction.time * 1000);
+
+        const root = this.bindAction.getRoot();
+        if (root?.userData?.isDayNightCycle && root.userData.dayNightSceneActive) {
+            syncDayNightEnvironment(root);
+        }
     }
 
     /**
@@ -591,6 +605,11 @@ class TimelineTrack extends THREE.EventDispatcher<CustomEvents> {
     play() {
         if (!this.bindAction) return;
 
+        const root = this.bindAction.getRoot();
+        if (root?.userData?.isDayNightCycle) {
+            enterDayNightCycle(root);
+        }
+
         // 不允许在播放过程中操纵时间轴(可选)。
         this.timeline.setOptions({
             timelineDraggable: false,
@@ -636,6 +655,9 @@ class TimelineTrack extends THREE.EventDispatcher<CustomEvents> {
     stop() {
         if (!this.bindAction) return;
 
+        const root = this.bindAction.getRoot();
+        const isDayNight = !!(root && "userData" in root && root.userData?.isDayNightCycle);
+
         this.timeline.setOptions({
             timelineDraggable: true,
             groupsDraggable: true,
@@ -644,9 +666,16 @@ class TimelineTrack extends THREE.EventDispatcher<CustomEvents> {
         });
 
         this.timeline.scrollLeft = 0;
-        this.timeline.setTime(0);
-
         this.bindAction.stop();
+
+        if (isDayNight) {
+            this._restoringDayNight = true;
+            exitDayNightCycle(root as THREE.Object3D, this.bindAction);
+            this.timeline.setTime(0);
+            this._restoringDayNight = false;
+        } else {
+            this.timeline.setTime(0);
+        }
     }
 
     /**

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { useDispatchSignal } from '@/hooks';
 import { escapeRegExp } from "@/utils";
 import App from "@/core/app/App";
+import { syncDayNightEnvironment } from "@/core/animation/presets/dayNightCycle";
 
 let prevActionsInUse = 0, needsUpdate = false;
 export class AnimationManager {
@@ -136,6 +137,16 @@ export class AnimationManager {
                 prevActionsInUse = actions.inUse;
 
                 mixer.update(delta);
+
+                const root = mixer.getRoot();
+                if (
+                    root &&
+                    "userData" in root &&
+                    (root as THREE.Object3D).userData?.isDayNightCycle &&
+                    (root as THREE.Object3D).userData?.dayNightSceneActive
+                ) {
+                    syncDayNightEnvironment(root as THREE.Object3D);
+                }
 
                 useDispatchSignal("animationMixerUpdate", mixer, delta)
 

@@ -475,6 +475,8 @@ export class App {
      * @param helper
      */
     addHelper(object: any, helper?: THREE.Object3D) {
+        if (object?.userData?.excludeHelper) return;
+
         if (helper === undefined) {
             if (object.isCamera) {
                 helper = new THREE.CameraHelper(object);

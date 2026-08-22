@@ -32,6 +32,22 @@ export * from "./core/shaderMaterial/modules"
 export type {ITimelineKeyframe,ITimelineRow,ITimelineModel} from "./core/animation/TimelineTrack.ts";
 export {TimelineTrack} from "./core/animation/TimelineTrack.ts";
 export * as Timeline from "./core/libs/astral-timeline/animation-timeline";
+export { KeyframeTrackFactory } from "./core/animation/AnimationManager.ts";
+export {
+	buildDayNightCyclePreset,
+	setDayNightCycleRadius,
+	setDayNightCycleSunSize,
+	resolveAnimationRoot,
+	enterDayNightCycle,
+	exitDayNightCycle,
+	syncDayNightEnvironment,
+	restoreDayNightEnvironment,
+	DAY_NIGHT_CLIP_NAME,
+} from "./core/animation/presets/dayNightCycle.ts";
+export type {
+	DayNightCycleOptions,
+	DayNightCyclePreset,
+} from "./core/animation/presets/dayNightCycle.ts";
 // 导出粒子库
 export * as Particle from './core/libs/three-nebula/index.js';
 // 导出脚本相关

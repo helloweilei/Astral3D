@@ -6,7 +6,7 @@ import {ConditionPoint} from '@vicons/carbon';
 import {store} from '@/store';
 import {t} from "@/language";
 import type {TimelineTrack,ITimelineRow} from "@astral3d/engine";
-import {App} from "@astral3d/engine";
+import {App, enterDayNightCycle, exitDayNightCycle} from "@astral3d/engine";
 
 export interface IAnimationItem {
     name: string,
@@ -239,6 +239,11 @@ export const useAnimationStore = defineStore('model-animation', () => {
             const action = App.animationManager.actionMap.get(state.current.uuid);
             if (!action) return;
 
+            const root = action.getRoot();
+            if (root?.userData?.isDayNightCycle) {
+                enterDayNightCycle(root);
+            }
+
             action.play();
             action.paused = false;
         }
@@ -269,7 +274,12 @@ export const useAnimationStore = defineStore('model-animation', () => {
             const action = App.animationManager.actionMap.get(state.current.uuid);
             if (!action) return;
 
-            action.stop();
+            const root = action.getRoot();
+            if (root?.userData?.isDayNightCycle) {
+                exitDayNightCycle(root, action);
+            } else {
+                action.stop();
+            }
         }
         state.current.isPaused = false;
         state.current.isRunning = false;

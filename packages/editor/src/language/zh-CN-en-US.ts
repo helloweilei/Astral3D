@@ -1134,6 +1134,11 @@ export default {
 	},
 	extra: {
 		"New animation": "新增动画",
+		"Day-night cycle preset": "预置昼夜交替",
+		"Day-night cycle added": "已添加「昼夜交替」：远处太阳球体绕转并改变场景明暗。阴影取决于物体是否开启投射/接收。",
+		"Day-night sun distance": "太阳距离",
+		"Day-night sun distance hint": "距场景中心的轨道半径，越大太阳越远",
+		"Day-night sun size": "太阳尺寸",
 		"Add keyframe": "添加关键帧",
 		Locked: "已锁定",
 		Unlocked: "已解锁",
