@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useThemeVars } from "naive-ui";
 import { CheckmarkOutline, CloseOutline, RefreshOutline } from "@vicons/ionicons5";
-import { Ruler, AreaCustom } from "@vicons/carbon";
+import { Ruler, AreaCustom, DirectionCurve } from "@vicons/carbon";
 import { App, Hooks } from "@astral3d/engine";
 import { t } from "@/language";
 import {
@@ -12,8 +12,9 @@ import {
 } from "@/utils/viewport/DistanceMeasureTool";
 import { AreaMeasureTool } from "@/utils/viewport/AreaMeasureTool";
 import { AreaMeasureState } from "@/utils/viewport/measure/types";
+import { PathDrawTool, type PathDrawState } from "@/utils/viewport/PathDrawTool";
 
-type ToolId = "distance" | "area";
+type ToolId = "distance" | "area" | "path";
 
 const themeVars = useThemeVars();
 const popupStyle = computed(() => ({
@@ -23,7 +24,7 @@ const popupStyle = computed(() => ({
 }));
 const iconColor = computed(() => themeVars.value.primaryColor);
 
-/** 仅地形开启时显示工具栏 */
+/** 测距 / 测面积仅地形开启时可用；绘制路径不依赖地形 */
 const terrainEnabled = ref(false);
 
 const activeTool = ref<ToolId | null>(null);
@@ -34,15 +35,27 @@ const measureState = ref<DistanceMeasureState | AreaMeasureState>({
 	picking: false,
 });
 
+const pathState = ref<PathDrawState>({
+	points: [],
+	length: null,
+	picking: false,
+	generated: false,
+});
+/** 流动速度（周期/秒） */
+const pathSpeed = ref(0.7);
+
 const distanceMeasureTool = new DistanceMeasureTool();
 const areaMeasureTool = new AreaMeasureTool();
+const pathDrawTool = new PathDrawTool();
 
 const showDistanceMeasurePopup = computed(() => terrainEnabled.value && activeTool.value === "distance");
 const showAreaMeasurePopup = computed(() => terrainEnabled.value && activeTool.value === "area");
+const showPathDrawPopup = computed(() => terrainEnabled.value && activeTool.value === "path");
 
 const canFinishDistance = computed(
 	() => measureState.value.picking && measureState.value.points.length >= 2
 );
+const canFinishPath = computed(() => pathState.value.picking && pathState.value.points.length >= 2);
 
 function syncTerrainVisible() {
 	terrainEnabled.value = !!App.project.getKey("terrain.enabled");
@@ -65,11 +78,11 @@ function formatArea(area?: number | null) {
 	return `${area.toFixed(2)} m²`;
 }
 
-function openMeasure(id: ToolId) {
+function openTool(id: ToolId) {
 	if (activeTool.value === id) return;
 
 	if (activeTool.value) {
-		closeMeasure();
+		closeTool();
 	}
 
 	activeTool.value = id;
@@ -81,47 +94,63 @@ function openMeasure(id: ToolId) {
 		areaMeasureTool.open(state => {
 			measureState.value = { ...state, points: [...state.points], area: state.area };
 		});
+	} else if (id === "path") {
+		pathDrawTool.setSpeed(pathSpeed.value);
+		pathDrawTool.open(state => {
+			pathState.value = { ...state, points: [...state.points] };
+		});
 	}
 }
 
-function resetMeasure() {
+function resetTool() {
 	if (activeTool.value === "distance") {
 		distanceMeasureTool.reset();
 	} else if (activeTool.value === "area") {
 		areaMeasureTool.reset();
+	} else if (activeTool.value === "path") {
+		pathDrawTool.reset();
 	}
 }
 
-function finishMeasure() {
+function finishTool() {
 	if (activeTool.value === "distance") {
 		distanceMeasureTool.finishPicking();
 	} else if (activeTool.value === "area") {
 		areaMeasureTool.finishPicking();
+	} else if (activeTool.value === "path") {
+		pathDrawTool.finishPicking();
 	}
 }
 
-function closeMeasure() {
+function closeTool() {
 	if (activeTool.value === "distance") {
 		distanceMeasureTool.close();
 	} else if (activeTool.value === "area") {
 		areaMeasureTool.close();
+	} else if (activeTool.value === "path") {
+		pathDrawTool.close();
 	}
 	measureState.value = { points: [], segments: [], total: null, picking: false };
+	pathState.value = { points: [], length: null, picking: false, generated: false };
 	activeTool.value = null;
 }
 
-
-function closeActiveTool() {
-	closeMeasure();
+function onPathSpeedChange(value: number | [number, number]) {
+	const speed = Array.isArray(value) ? value[0] : value;
+	pathSpeed.value = speed;
+	pathDrawTool.setSpeed(speed);
 }
 
 function onToolClick(id: ToolId) {
 	if (activeTool.value === id) return;
-	openMeasure(id);
+	openTool(id);
 }
 
+// 地形关闭后，所有地形工具同步退出并清理视口图形
 watch(terrainEnabled, enabled => {
-	if (!enabled) closeActiveTool();
+	if (!enabled && activeTool.value) {
+		closeTool();
+	}
 });
 
 onMounted(() => {
@@ -133,6 +162,7 @@ onBeforeUnmount(() => {
 	Hooks.useRemoveSignal("sceneTerrainSettingsChanged", syncTerrainVisible);
 	distanceMeasureTool.dispose();
 	areaMeasureTool.dispose();
+	pathDrawTool.dispose();
 });
 </script>
 
@@ -143,7 +173,7 @@ onBeforeUnmount(() => {
 			<div class="viewport-tools__popup-header">
 				<span>{{ t("layout.scene.tools.Distance") }}</span>
 				<n-button quaternary circle size="tiny" :title="t('layout.scene.tools.Close')"
-					@click.stop="closeMeasure">
+					@click.stop="closeTool">
 					<template #icon>
 						<n-icon :size="12">
 							<CloseOutline />
@@ -176,7 +206,7 @@ onBeforeUnmount(() => {
 
 			<div class="viewport-tools__popup-footer">
 				<div class="viewport-tools__actions">
-					<n-button size="tiny" :disabled="measureState.points.length === 0" @click.stop="resetMeasure">
+					<n-button size="tiny" :disabled="measureState.points.length === 0" @click.stop="resetTool">
 						<template #icon>
 							<n-icon>
 								<RefreshOutline />
@@ -184,7 +214,7 @@ onBeforeUnmount(() => {
 						</template>
 						{{ t("layout.scene.tools.Reset") }}
 					</n-button>
-					<n-button size="tiny" type="primary" :disabled="!canFinishDistance" @click.stop="finishMeasure">
+					<n-button size="tiny" type="primary" :disabled="!canFinishDistance" @click.stop="finishTool">
 						<template #icon>
 							<n-icon>
 								<CheckmarkOutline />
@@ -207,7 +237,7 @@ onBeforeUnmount(() => {
 			<div class="viewport-tools__popup-header">
 				<span>{{ t("layout.scene.tools.Area") }}</span>
 				<n-button quaternary circle size="tiny" :title="t('layout.scene.tools.Close')"
-					@click.stop="closeMeasure">
+					@click.stop="closeTool">
 					<template #icon>
 						<n-icon :size="12">
 							<CloseOutline />
@@ -248,7 +278,7 @@ onBeforeUnmount(() => {
 
 			<div class="viewport-tools__popup-footer">
 				<div class="viewport-tools__actions">
-					<n-button size="tiny" :disabled="measureState.points.length === 0" @click.stop="resetMeasure">
+					<n-button size="tiny" :disabled="measureState.points.length === 0" @click.stop="resetTool">
 						<template #icon>
 							<n-icon>
 								<RefreshOutline />
@@ -256,7 +286,7 @@ onBeforeUnmount(() => {
 						</template>
 						{{ t("layout.scene.tools.Reset") }}
 					</n-button>
-					<n-button size="tiny" type="primary" :disabled="!canFinishDistance" @click.stop="finishMeasure">
+					<n-button size="tiny" type="primary" :disabled="!canFinishDistance" @click.stop="finishTool">
 						<template #icon>
 							<n-icon>
 								<CheckmarkOutline />
@@ -275,32 +305,115 @@ onBeforeUnmount(() => {
 			</div>
 		</div>
 
+		<div v-if="showPathDrawPopup" class="viewport-tools__popup" :style="popupStyle" @pointerdown.stop @click.stop>
+			<div class="viewport-tools__popup-header">
+				<span>{{ t("layout.scene.tools['Draw Path']") }}</span>
+				<n-button quaternary circle size="tiny" :title="t('layout.scene.tools.Close')" @click.stop="closeTool">
+					<template #icon>
+						<n-icon :size="12">
+							<CloseOutline />
+						</n-icon>
+					</template>
+				</n-button>
+			</div>
+
+			<div class="viewport-tools__popup-body">
+				<div v-if="pathState.points.length === 0" class="viewport-tools__empty">
+					{{ t("layout.scene.tools['No Path Points']") }}
+				</div>
+				<div v-else class="viewport-tools__row">
+					<span class="viewport-tools__label">{{ t("layout.scene.tools['Path Points']") }}</span>
+					<span class="viewport-tools__value">{{ pathState.points.length }}</span>
+				</div>
+				<div v-for="(point, index) in pathState.points" :key="index" class="viewport-tools__row">
+					<span class="viewport-tools__label">
+						{{ t("layout.scene.tools.Point") }} {{ index + 1 }}
+					</span>
+					<span class="viewport-tools__value">{{ formatPoint(point) }}</span>
+				</div>
+				<div v-if="pathState.length !== null" class="viewport-tools__row">
+					<span class="viewport-tools__label">{{ t("layout.scene.tools['Path Length']") }}</span>
+					<span class="viewport-tools__value viewport-tools__value--accent" :style="{ color: iconColor }">
+						{{ formatDistance(pathState.length) }}
+					</span>
+				</div>
+				<div v-if="pathState.generated" class="viewport-tools__row">
+					<span class="viewport-tools__label">{{ t("layout.scene.tools['Flow Speed']") }}</span>
+					<n-slider :value="pathSpeed" :min="0.05" :max="1.5" :step="0.05" :tooltip="false"
+						@update:value="onPathSpeedChange" />
+				</div>
+			</div>
+
+			<div class="viewport-tools__popup-footer">
+				<div class="viewport-tools__actions">
+					<n-button size="tiny" :disabled="pathState.points.length === 0" @click.stop="resetTool">
+						<template #icon>
+							<n-icon>
+								<RefreshOutline />
+							</n-icon>
+						</template>
+						{{ t("layout.scene.tools.Reset") }}
+					</n-button>
+					<n-button size="tiny" type="primary" :disabled="!canFinishPath" @click.stop="finishTool">
+						<template #icon>
+							<n-icon>
+								<CheckmarkOutline />
+							</n-icon>
+						</template>
+						{{ t("layout.scene.tools.Finish") }}
+					</n-button>
+				</div>
+				<span class="viewport-tools__hint">
+					{{
+						pathState.picking
+							? t("layout.scene.tools['Click to draw path']")
+							: t("layout.scene.tools['Path generated']")
+					}}
+				</span>
+			</div>
+		</div>
+
 		<div class="viewport-tools__rail" @pointerdown.stop @click.stop>
+			<template v-if="terrainEnabled">
+				<n-tooltip placement="left" trigger="hover">
+					<template #trigger>
+						<n-button circle size="tiny" class="viewport-tools__btn"
+							:class="{ 'is-active': activeTool === 'distance' }" @click.stop="onToolClick('distance')">
+							<template #icon>
+								<n-icon :size="10" :color="iconColor">
+									<Ruler />
+								</n-icon>
+							</template>
+						</n-button>
+					</template>
+					{{ t("layout.scene.tools.Distance") }}
+				</n-tooltip>
+				<n-tooltip placement="left" trigger="hover">
+					<template #trigger>
+						<n-button circle size="tiny" class="viewport-tools__btn"
+							:class="{ 'is-active': activeTool === 'area' }" @click.stop="onToolClick('area')">
+							<template #icon>
+								<n-icon :size="10" :color="iconColor">
+									<AreaCustom />
+								</n-icon>
+							</template>
+						</n-button>
+					</template>
+					{{ t("layout.scene.tools.Area") }}
+				</n-tooltip>
+			</template>
 			<n-tooltip placement="left" trigger="hover">
 				<template #trigger>
 					<n-button circle size="tiny" class="viewport-tools__btn"
-						:class="{ 'is-active': activeTool === 'distance' }" @click.stop="onToolClick('distance')">
+						:class="{ 'is-active': activeTool === 'path' }" @click.stop="onToolClick('path')">
 						<template #icon>
 							<n-icon :size="10" :color="iconColor">
-								<Ruler />
+								<DirectionCurve />
 							</n-icon>
 						</template>
 					</n-button>
 				</template>
-				{{ t("layout.scene.tools.Distance") }}
-			</n-tooltip>
-			<n-tooltip placement="left" trigger="hover">
-				<template #trigger>
-					<n-button circle size="tiny" class="viewport-tools__btn"
-						:class="{ 'is-active': activeTool === 'area' }" @click.stop="onToolClick('area')">
-						<template #icon>
-							<n-icon :size="10" :color="iconColor">
-								<AreaCustom />
-							</n-icon>
-						</template>
-					</n-button>
-				</template>
-				{{ t("layout.scene.tools.Area") }}
+				{{ t("layout.scene.tools['Draw Path']") }}
 			</n-tooltip>
 		</div>
 	</div>
