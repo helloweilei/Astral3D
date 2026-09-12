@@ -339,7 +339,7 @@ onBeforeUnmount(() => {
 				</div>
 				<div v-if="pathState.generated" class="viewport-tools__row">
 					<span class="viewport-tools__label">{{ t("layout.scene.tools['Flow Speed']") }}</span>
-					<n-slider :value="pathSpeed" :min="0.05" :max="1.5" :step="0.05" :tooltip="false"
+					<n-slider :value="pathSpeed" :min="0.1" :max="10" :step="0.1" :tooltip="false"
 						@update:value="onPathSpeedChange" />
 				</div>
 			</div>
