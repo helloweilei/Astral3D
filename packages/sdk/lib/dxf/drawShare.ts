@@ -79,10 +79,12 @@ export function main(d) {
     renderer.toneMapping = THREE.ReinhardToneMapping;
     // renderer.autoClear = false;
 
-    const loader = new TTFLoader();
-    loader.loadAsync(options.fontUrl).then(function (response) {
-        font = new Font(response);
-
+    /**
+     * 字体不是 CAD 几何渲染的必要条件。字体资源加载失败时仍初始化查看器，
+     * 此时文字实体会由 createText/createMText 中已有的 `if (!font) return` 跳过。
+     */
+    function initializeViewer(fontData?: any) {
+        font = fontData ? new Font(fontData) : undefined;
         init();
 
         // OrbitControls mousemove事件中未调用chang事件，所以需要一直渲染
@@ -153,7 +155,17 @@ export function main(d) {
         data = undefined;
 
         resize({ width: inputElement.width, height: inputElement.height });
-    });
+    }
+
+    const loader = new TTFLoader();
+    loader.loadAsync(options.fontUrl)
+        .then(
+            initializeViewer,
+            error => {
+            console.warn(`CAD font load failed, rendering without text: ${options.fontUrl}`, error);
+            initializeViewer();
+            }
+        );
 }
 
 function createLineTypeShaders() {

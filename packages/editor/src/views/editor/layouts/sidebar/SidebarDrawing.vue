@@ -54,8 +54,14 @@ function removeDrawing() {
 }
 
 watch(() => drawingInfo.value.imgSrc, (newVal) => {
-  if (newVal && !drawingInfo.value.isCad) {
-    const file = base64ToFile(drawingInfo.value.imgSrc, "drawing");
+  if (!newVal || drawingInfo.value.isCad) {
+    fileList.value = [];
+    return;
+  }
+
+  // 本地上传的图纸是 base64，转成 File 以便 n-upload 预览
+  if (newVal.startsWith("data:")) {
+    const file = base64ToFile(newVal, "drawing");
     fileList.value = [{
       id: "1",
       name: file.name,
@@ -63,9 +69,18 @@ watch(() => drawingInfo.value.imgSrc, (newVal) => {
       type: file.type,
       status: "finished",
       url: null,
-    }]
+    }];
+    return;
   }
-})
+
+  // 从 CAD 库拖入的图片是服务端 URL，直接用 url 预览，不能走 base64 解析
+  fileList.value = [{
+    id: "1",
+    name: newVal.split(/[\\/]/).pop() || "drawing",
+    status: "finished",
+    url: newVal,
+  }];
+}, { immediate: true })
 </script>
 
 <template>

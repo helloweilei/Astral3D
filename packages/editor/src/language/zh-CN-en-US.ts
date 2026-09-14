@@ -921,6 +921,7 @@ export default {
 		"Left-drag to add a mark": "按住左键拖动以添加标记",
 		"drawing reset": "图纸复位",
 		"Are you sure you want to delete the drawing?": "确定要删除图纸吗？",
+		"Are you sure you want to close the drawing? The marks on it will be lost.": "确定要关闭图纸吗？图纸上的标记将会丢失。",
 		"Select the mark whose color you want to change!": "请选择要修改颜色的标记！",
 		"Please upload the drawing file": "请上传图纸文件",
 		"This format is not supported, please upload again! Supported formats are:": "不支持该格式，请重新上传！支持格式为：",

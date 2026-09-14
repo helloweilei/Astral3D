@@ -8,7 +8,7 @@
       <n-button quaternary circle type="primary" @click="showCadUpload = true">
         <template #icon>
           <n-icon>
-            <CloudUpload/>
+            <CloudUpload />
           </n-icon>
         </template>
       </n-button>
@@ -17,20 +17,20 @@
     <div class="flex-1 overflow-y-auto px-0.3rem">
       <div class="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-2">
         <n-card size="small" hoverable v-for="item in objectList" :key="item.id" @dblclick="addToScene(item)"
-                draggable="true" @dragstart="dragStart($event, item)" @dragend="dragEnd">
+          draggable="true" @dragstart="dragStart($event, item)" @dragend="dragEnd">
           <template #cover>
             <n-spin :show="item.conversionStatus === 0">
               <template #description>
                 正在解析...
               </template>
-              <img :src="item.thumbnail ? item.thumbnail : '/static/images/placeholder/占位图.png'"
-                   :alt="item.fileName" draggable="false">
+              <img :src="item.thumbnail ? toStaticUrl(item.thumbnail) : '/static/images/placeholder/占位图.png'"
+                :alt="item.fileName" draggable="false">
               <n-tag :color="{ color: '#F1C3CC', textColor: '#D03050' }" :bordered="false" size="small"
-                     class="absolute top-33px w-full" v-if="item.conversionStatus === 2">
+                class="absolute top-33px w-full" v-if="item.conversionStatus === 2">
                 解析失败
                 <template #icon>
                   <n-icon>
-                    <CloseCircleSharp/>
+                    <CloseCircleSharp />
                   </n-icon>
                 </template>
               </n-tag>
@@ -48,30 +48,30 @@
     </div>
 
     <n-modal v-model:show="showHistoryModal" class="!w-60vw" preset="dialog" display-directive="show"
-             :title="t('cad[\'CAD parse\']') + t('layout.sider.History')">
+      :title="t('cad[\'CAD parse\']') + t('layout.sider.History')">
       <n-data-table class="mt-20px" size="small" :loading="tableLoading" :columns="columns"
-                    :data="objectList"></n-data-table>
+        :data="objectList"></n-data-table>
       <div class="flex justify-end mt-0.5rem">
         <n-pagination v-bind="paginationReactive"></n-pagination>
       </div>
     </n-modal>
 
     <!--  CAD文件上传  -->
-    <CadUploadDialog v-model:show="showCadUpload" @refreshList="getCadList" ref="uploadDialogRef"/>
+    <CadUploadDialog v-model:show="showCadUpload" @refreshList="getCadList" ref="uploadDialogRef" />
   </div>
 </template>
 
 <script setup lang="ts">
-import {ref, reactive, onMounted, h, onBeforeUnmount, inject, Ref} from "vue";
-import type {DataTableColumns} from 'naive-ui';
-import {NButton, NTag, NIcon} from 'naive-ui'
-import {CloudUpload, Reload, CheckmarkCircle, CloseOutline, CloseCircleSharp} from '@vicons/ionicons5';
-import {t} from "@/language";
-import {useDragStore} from "@/store/modules/drag";
-import {fetchGetCadList} from "@/http/api/cad";
-import {onWebSocket, offWebSocket} from "@/hooks/useWebSocket";
-import {useWebsocketStore} from "@/store/modules/websocket";
-import {App} from "@astral3d/engine";
+import { ref, reactive, onMounted, h, onBeforeUnmount, inject, Ref } from "vue";
+import type { DataTableColumns } from 'naive-ui';
+import { NButton, NTag, NIcon } from 'naive-ui'
+import { CloudUpload, Reload, CheckmarkCircle, CloseOutline, CloseCircleSharp } from '@vicons/ionicons5';
+import { t } from "@/language";
+import { useDragStore } from "@/store/modules/drag";
+import { fetchGetCadList } from "@/http/api/cad";
+import { onWebSocket, offWebSocket } from "@/hooks/useWebSocket";
+import { useWebsocketStore } from "@/store/modules/websocket";
+import { App } from "@astral3d/engine";
 import CadUploadDialog from "./cadLibrary/CadUploadDialog.vue";
 
 const websocketStore = useWebsocketStore();
@@ -91,19 +91,19 @@ const columns: DataTableColumns<ICad.Data> = [
     key: 'conversionStatus',
     render(row) {
       return h(
-          NTag,
-          {
-            bordered: false,
-            type: row.conversionStatus === 0 ? "warning" : row.conversionStatus === 1 ? "success" : "error",
-          },
-          {
-            default: () => row.conversionStatus === 0 ? "转换中" : row.conversionStatus === 1 ? "成功" : "失败",
-            icon: () => h(
-                NIcon, {
-                  component: row.conversionStatus === 0 ? Reload : row.conversionStatus === 1 ? CheckmarkCircle : CloseOutline
-                }
-            )
+        NTag,
+        {
+          bordered: false,
+          type: row.conversionStatus === 0 ? "warning" : row.conversionStatus === 1 ? "success" : "error",
+        },
+        {
+          default: () => row.conversionStatus === 0 ? "转换中" : row.conversionStatus === 1 ? "成功" : "失败",
+          icon: () => h(
+            NIcon, {
+            component: row.conversionStatus === 0 ? Reload : row.conversionStatus === 1 ? CheckmarkCircle : CloseOutline
           }
+          )
+        }
       )
     }
   },
@@ -113,12 +113,12 @@ const columns: DataTableColumns<ICad.Data> = [
     render(row) {
       if (row.conversionStatus !== 1) return "";
       return h(
-          NButton,
-          {
-            size: 'small',
-            onClick: () => addToScene(row)
-          },
-          {default: () => t("other.Load")}
+        NButton,
+        {
+          size: 'small',
+          onClick: () => addToScene(row)
+        },
+        { default: () => t("other.Load") }
       )
     }
   }
@@ -147,6 +147,25 @@ async function getCadList() {
   paginationReactive.pageCount = res.data?.pages || 1;
 }
 
+/**
+ * 服务端返回的是 Windows 风格路径（__uploads\cad\xxx.jpg），
+ * <img> 能容忍反斜杠，但 CSS url() 会把 "\c"、"\a" 当成转义序列，导致图纸背景加载失败，
+ * 这里统一转成正斜杠 URL
+ */
+function toStaticUrl(path: string) {
+  return `/file/static/${path.replace(/\\/g, "/")}`;
+}
+
+function applyDrawing(item: ICad.Data) {
+  // 先清空图纸
+  App.project.resetDrawing();
+
+  App.project.setDrawingSrc(toStaticUrl(item.converterFilePath));
+  App.project.setKey("drawing.isUploaded", true);
+
+  drawingInfo.value = App.project.getKey("drawing");
+}
+
 async function addToScene(item: ICad.Data) {
   showHistoryModal.value = false;
 
@@ -156,24 +175,10 @@ async function addToScene(item: ICad.Data) {
       content: window.$t("drawing['This operation will overwrite the current drawing, and any unsaved data will be lost. Do you want to continue?']"),
       positiveText: window.$t('other.Ok'),
       negativeText: window.$t('other.Cancel'),
-      onPositiveClick: () => {
-        // 先清空图纸
-        App.project.resetDrawing();
-
-        App.project.setDrawingSrc(`file/static/${item.converterFilePath}`);
-        App.project.setKey("drawing.isUploaded", true);
-
-        drawingInfo.value = App.project.getKey("drawing");
-      },
+      onPositiveClick: () => applyDrawing(item),
     });
   } else {
-    // 先清空图纸
-    App.project.resetDrawing();
-
-    App.project.setDrawingSrc(`file/static/${item.converterFilePath}`);
-    App.project.setKey("drawing.isUploaded", true);
-
-    drawingInfo.value = App.project.getKey("drawing");
+    applyDrawing(item);
   }
 }
 

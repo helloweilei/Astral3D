@@ -112,7 +112,6 @@ declare module 'vue' {
     NTooltip: typeof import('naive-ui')['NTooltip']
     NTree: typeof import('naive-ui')['NTree']
     NTreeSelect: typeof import('naive-ui')['NTreeSelect']
-    NTypographyTitle: typeof import('naive-ui')['NTypographyTitle']
     NUpload: typeof import('naive-ui')['NUpload']
     NUploadDragger: typeof import('naive-ui')['NUploadDragger']
     PointCloudReconstructor: typeof import('./src/components/es/plugin/builtin/PointCloudReconstructor.vue')['default']
