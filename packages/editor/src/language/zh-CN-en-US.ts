@@ -242,6 +242,8 @@ export default {
 				"Ungroup selected groups?": "拆分选中的组？子节点将提升到与组同级，组本身会被删除。",
 				"Please select sibling objects to group": "请选择至少两个同级节点后再成组",
 				"Please select groups to ungroup": "请选择一个或多个组后再拆组",
+				"Edit config": "编辑配置",
+				"Snap on add": "新增时贴地",
 				"Click Upload": "点击上传",
 				// 几何组件tab
 				Center: "居中",

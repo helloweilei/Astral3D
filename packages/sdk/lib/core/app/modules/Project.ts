@@ -193,6 +193,9 @@ export const defaultProjectInfo = (): IAppProject.Info => ({
 		miniMapSize: 240,
 		miniMapRenderSize: 120,
 	},
+	editor: {
+		snapOnAdd: true,
+	},
 	// 地形
 	terrain: {
 		enabled: false,

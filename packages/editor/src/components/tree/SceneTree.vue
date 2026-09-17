@@ -21,7 +21,8 @@ import {
   TrashCan,
   Renew,
   GroupObjects,
-  UngroupObjects
+  UngroupObjects,
+  Settings
 } from '@vicons/carbon';
 import { Object3D, Group, Box3, Vector3, Matrix4 } from "three";
 import { t } from "@/language";
@@ -31,6 +32,8 @@ import { getMaterialName } from "@/utils/common/scenes";
 import EsContextmenu from "@/components/es/EsContextmenu.vue";
 
 const sceneTreeRef = ref();
+const editConfigVisible = ref(false);
+const snapOnAdd = ref(true);
 const pattern = ref("");
 const sceneTreeData = ref<TreeOption[]>([
   {
@@ -195,7 +198,37 @@ function getSceneGroupSuffix(disabled = false) {
             }),
         }
       ),
+      h(
+        NButton,
+        {
+          quaternary: true,
+          circle: true,
+          size: "tiny",
+          title: t("layout.sider.scene['Edit config']"),
+          onClick: (event: Event) => {
+            event.stopPropagation();
+            openEditConfig();
+          },
+        },
+        {
+          icon: () =>
+            h(NIcon, { size: 14 }, {
+              default: () => h(Settings),
+            }),
+        }
+      ),
     ]);
+}
+
+function openEditConfig() {
+  const current = App.project.getKey("editor") ?? { snapOnAdd: true };
+  snapOnAdd.value = current.snapOnAdd !== false;
+  editConfigVisible.value = true;
+}
+
+function handleSnapOnAddChange(value: boolean) {
+  const current = App.project.getKey("editor") ?? { snapOnAdd: true };
+  App.project.setKey("editor", { ...current, snapOnAdd: value });
 }
 
 function resetDefaultCamera() {
@@ -280,7 +313,7 @@ function groupSelectedObjects(name: string) {
   const invGroupWorld = groupMatrixWorld.clone().invert();
 
   const commands: Array<AddObjectCommand | MoveObjectCommand | SetPositionCommand> = [
-    new AddObjectCommand(group, parent, insertIndex),
+    new AddObjectCommand(group, parent, insertIndex, false),
   ];
 
   for (const obj of sorted) {
@@ -808,29 +841,23 @@ onBeforeUnmount(() => {
 
 <template>
   <n-input v-model:value="pattern" :placeholder="t('layout.sider.scene.Search')" />
-  <n-tree
-    ref="sceneTreeRef"
-    virtual-scroll
-    checkable
-    :cascade="false"
-    :check-on-click="false"
-    :pattern="pattern"
-    :data="sceneTreeData"
-    v-model:selected-keys="sceneTreeSelected"
-    v-model:checked-keys="sceneTreeChecked"
-    :show-irrelevant-nodes="false"
-    v-model:expanded-keys="sceneTreeExpandedKeys"
-    draggable
-    :allow-drop="allowDrop"
-    :node-props="nodeProps"
-    @drop="handleSceneTreeDrop"
-    @update:selected-keys="handlerTreeSelectChange"
-    @update:checked-keys="handlerTreeCheckChange"
-    block-line
-  />
+  <n-tree ref="sceneTreeRef" virtual-scroll checkable :cascade="false" :check-on-click="false" :pattern="pattern"
+    :data="sceneTreeData" v-model:selected-keys="sceneTreeSelected" v-model:checked-keys="sceneTreeChecked"
+    :show-irrelevant-nodes="false" v-model:expanded-keys="sceneTreeExpandedKeys" draggable :allow-drop="allowDrop"
+    :node-props="nodeProps" @drop="handleSceneTreeDrop" @update:selected-keys="handlerTreeSelectChange"
+    @update:checked-keys="handlerTreeCheckChange" block-line />
 
   <EsContextmenu ref="contextmenuRef" placement="right-start" trigger="manual" size="small"
     :options="contextmenuOptions" @select="handleContextmenuSelect" />
+
+  <n-modal v-model:show="editConfigVisible" preset="dialog" :title="t('layout.sider.scene[\'Edit config\']')"
+    :show-icon="false" style="width: 360px">
+    <n-form label-placement="left" :label-width="100" size="small">
+      <n-form-item :label="t('layout.sider.scene[\'Snap on add\']')">
+        <n-switch size="small" v-model:value="snapOnAdd" @update:value="handleSnapOnAddChange" />
+      </n-form-item>
+    </n-form>
+  </n-modal>
 </template>
 
 <style lang="less" scoped>

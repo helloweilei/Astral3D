@@ -242,6 +242,12 @@ declare namespace IAppProject {
 		miniMapRenderSize: number;
 	}
 
+	/** 编辑器行为配置 */
+	interface Editor {
+		/** 新增模型时将包围盒底面贴到地面/地形，默认开启 */
+		snapOnAdd: boolean;
+	}
+
 	interface Config {
 		xr: boolean;
 		renderer: Renderer;
@@ -250,6 +256,7 @@ declare namespace IAppProject {
 		weather: Weather;
 		terrain: Terrain;
 		viewport: Viewport;
+		editor: Editor;
 	}
 
 	interface Info extends Config {

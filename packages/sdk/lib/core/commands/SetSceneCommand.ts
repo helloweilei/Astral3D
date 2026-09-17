@@ -29,7 +29,7 @@ class SetSceneCommand extends Command {
 
 			while ( scene.children.length > 0 ) {
 				const child = scene.children.pop();
-				this.cmdArray.push(new AddObjectCommand(child));
+				this.cmdArray.push(new AddObjectCommand(child, undefined, undefined, false));
 			}
 		}
 	}

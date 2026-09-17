@@ -370,6 +370,7 @@ export class Package {
 				weather: App.project.getKey("weather"),
 				// 项目地形配置
 				terrain: App.project.getKey("terrain"),
+				editor: App.project.getKey("editor"),
 			}),
 		});
 
@@ -787,6 +788,14 @@ export class Package {
 							}
 						});
 						useDispatchSignal("sceneTerrainSettingsChanged");
+					}
+
+					if (configJson.editor) {
+						const projectEditor = App.project.getKey("editor") ?? { snapOnAdd: true };
+						Object.keys(configJson.editor).forEach(key => {
+							projectEditor[key] = configJson.editor[key];
+						});
+						App.project.setKey("editor", projectEditor, false);
 					}
 				}
 
