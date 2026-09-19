@@ -64,6 +64,29 @@ export function screenToWorld(x: number, y: number) {
 	return App.camera.position.clone().add(dir.multiplyScalar(distance));
 }
 
+/**
+ * 把拖放落点写到物体上。
+ * 开启「新增时贴地」时只采用落点的水平位置，再把包围盒底面贴到地形或 y=0。
+ * 文件模型是先 AddObjectCommand 贴地、再被落点 position.copy 覆盖的，所以必须在覆盖之后再贴一次。
+ */
+export function applyDropPosition(object: THREE.Object3D, position: { x: number; y: number; z: number }) {
+	object.position.copy(position);
+	if (App.project.getKey("editor.snapOnAdd") === false) return;
+
+	object.updateWorldMatrix(true, true);
+	const box = new THREE.Box3().setFromObject(object);
+	if (box.isEmpty() || !Number.isFinite(box.min.y)) return;
+
+	const center = box.getCenter(new THREE.Vector3());
+	let groundY = 0;
+	const height = window.viewer?.modules?.terrain?.pickSurfaceHeight?.(center.x, center.z);
+	if (typeof height === "number") groundY = height;
+
+	const delta = groundY - box.min.y;
+	if (Math.abs(delta) < 1e-3) return;
+	object.position.y += delta;
+}
+
 export function reBufferGeometryUv(geometry: THREE.BufferGeometry) {
 	const uv = geometry.attributes.uv;
 	if (!uv) return;

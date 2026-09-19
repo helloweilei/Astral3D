@@ -4,7 +4,7 @@
     <n-form-item :label="t('layout.sider.sceneConfig.Background')">
       <template class="w-full flex items-center justify-between">
         <n-select v-model:value="backgroundType" @update:value="onBackgroundChanged"
-          :options="[{ label: '', value: 'None' }, { label: 'Color', value: 'Color' }, { label: 'Texture', value: 'Texture' }, { label: 'Equirect', value: 'Equirectangular' }]" />
+          :options="[{ label: t('layout.sider.sceneConfig.None'), value: 'None' }, { label: 'Color', value: 'Color' }, { label: 'Texture', value: 'Texture' }, { label: 'Equirect', value: 'Equirectangular' }]" />
 
         <n-color-picker v-if="backgroundType === 'Color'" v-model:value="backgroundColor" :show-alpha="false"
           :render-label="() => ''" :modes="['hex']" @update:value="onBackgroundChanged" size="small"
@@ -29,7 +29,7 @@
     <!-- environment -->
     <n-form-item :label="t('layout.sider.sceneConfig.Environment')">
       <n-select v-model:value="environmentSelect" @update:value="onEnvironmentChanged"
-        :options="[{ label: '', value: 'None' }, { label: 'Equirect', value: 'Equirectangular' }, { label: 'Modelviewer', value: 'ModelViewer' }]" />
+        :options="[{ label: t('layout.sider.sceneConfig.None'), value: 'None' }, { label: 'Equirect', value: 'Equirectangular' }, { label: 'Modelviewer', value: 'ModelViewer' }]" />
 
       <EsTexture v-if="environmentSelect === 'Equirectangular'" v-model:texture="environmentTexture"
         @change="onEnvironmentChanged" width="26px" height="26px" class="ml-5px" />

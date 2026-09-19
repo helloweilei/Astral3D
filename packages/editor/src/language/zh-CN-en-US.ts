@@ -390,6 +390,7 @@ export default {
 			sceneConfig: {
 				"Project information": "项目信息",
 				Background: "背景",
+				None: "无",
 				Environment: "环境",
 				Grid: "网格",
 				Helpers: "辅助",

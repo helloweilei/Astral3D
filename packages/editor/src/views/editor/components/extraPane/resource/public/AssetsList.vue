@@ -7,7 +7,7 @@ import { t } from "@/language";
 import { fetchGetAssetCategoryTags, fetchGetAssetsList } from "@/http/api/assetsInfo";
 import AssetPreview from "@/components/preview/AssetPreview.vue";
 import { useDragStore } from "@/store/modules/drag";
-import { screenToWorld } from "@/utils/common/scenes";
+import { applyDropPosition, screenToWorld } from "@/utils/common/scenes";
 
 const props = withDefaults(defineProps<{
   type: IAssets.SupportType,
@@ -116,8 +116,8 @@ function addToScene(asset: IAssets.Item, positionOrObject?: Vector3 | Object3D) 
           // const file = new File([blob],`${asset.name}.${asset.file.split('/').pop()?.split('.')[1]}`);
           const file = new File([blob], `${asset.name}${asset.file.substring(asset.file.lastIndexOf('.'))}`);
           Loader.loadFiles([file], undefined).then((models: any) => {
-            if (positionOrObject) {
-              models[0].position.copy(positionOrObject);
+            if (positionOrObject && models[0]) {
+              applyDropPosition(models[0], positionOrObject as Vector3);
               Hooks.useDispatchSignal("sceneGraphChanged");
             }
           });

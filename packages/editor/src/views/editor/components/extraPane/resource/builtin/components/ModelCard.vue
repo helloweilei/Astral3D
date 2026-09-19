@@ -14,7 +14,7 @@
 <script setup lang="ts">
 import {Ref, inject, nextTick} from 'vue';
 import {useDragStore} from "@/store/modules/drag";
-import {screenToWorld} from "@/utils/common/scenes";
+import {applyDropPosition, screenToWorld} from "@/utils/common/scenes";
 import * as Astral3D from '@astral3d/engine';
 
 const props = withDefaults(defineProps<{
@@ -69,8 +69,8 @@ function loadModel(position?: { x: number, y: number, z: number }) {
       .then(blob => {
         const file = new File([blob], props.resource.path?.split('/').pop() as string || props.resource.name as string);
         Astral3D.Loader.loadFiles([file], undefined).then((models:any) => {
-          if (position) {
-            models[0].position.copy(position);
+          if (position && models[0]) {
+            applyDropPosition(models[0], position);
             Astral3D.Hooks.useDispatchSignal("sceneGraphChanged");
           }
         });
@@ -97,7 +97,7 @@ function dragEnd() {
   const position = screenToWorld(dragStore.endPosition.x, dragStore.endPosition.y);
   if (!props.resource.path) {
     const obj = Astral3D[props.resource.key]();
-    obj.position.copy(position);
+    applyDropPosition(obj, position);
     Astral3D.App.execute(new Astral3D.AddObjectCommand(obj));
   } else {
     loadModel(position);
